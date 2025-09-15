@@ -1,4 +1,3 @@
-// main_wrapper.dart
 import 'package:flutter/material.dart';
 import 'package:timely/views/main/home_page.dart';
 import 'package:timely/views/main/history_page.dart';
@@ -7,7 +6,9 @@ import 'package:timely/views/main/settings_page.dart';
 import 'package:timely/widgets/custom_navbar.dart';
 
 class MainWrapper extends StatefulWidget {
-  const MainWrapper({super.key});
+  final void Function(ThemeMode)? updateTheme;
+
+  const MainWrapper({super.key, this.updateTheme});
 
   @override
   State<MainWrapper> createState() => _MainWrapperState();
@@ -15,10 +16,12 @@ class MainWrapper extends StatefulWidget {
 
 class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
+  late List<Widget> _pages;
 
   @override
-  Widget build(BuildContext context) {
-    final List<Widget> _pages = [
+  void initState() {
+    super.initState();
+    _pages = [
       HomePage(
         showSnackBar: (msg) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -32,9 +35,12 @@ class _MainWrapperState extends State<MainWrapper> {
       ),
       const HistoryPage(),
       const ProfilePage(),
-      const SettingsPage(),
+      SettingsPage(updateTheme: widget.updateTheme),
     ];
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: _pages[_currentIndex],
       bottomNavigationBar: CustomNavbar(

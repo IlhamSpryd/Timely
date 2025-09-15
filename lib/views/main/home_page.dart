@@ -217,6 +217,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     },
                     child: Text(
                       currentTime,
+                      textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.displayLarge?.copyWith(
                         fontWeight: FontWeight.w300,
                         letterSpacing: -2,
@@ -228,16 +229,18 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 },
               ),
               const SizedBox(height: 8),
-              Container(
-                height: 3,
-                width: 60,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(2),
-                  gradient: LinearGradient(
-                    colors: [
-                      Theme.of(context).colorScheme.primary,
-                      Theme.of(context).colorScheme.secondary,
-                    ],
+              Center(
+                child: Container(
+                  height: 3,
+                  width: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(2),
+                    gradient: LinearGradient(
+                      colors: [
+                        Theme.of(context).colorScheme.primary,
+                        Theme.of(context).colorScheme.secondary,
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -257,7 +260,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             icon: Icons.login_rounded,
             isCompleted: _hasCheckedIn,
             animation: _checkInController,
-            primaryColor: const Color(0xFF10B981), // Emerald
+            primaryColor: const Color(0xFF10B981),
             secondaryColor: const Color(0xFF34D399),
           ),
         ),
@@ -268,7 +271,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             icon: Icons.logout_rounded,
             isCompleted: _hasCheckedOut,
             animation: _checkOutController,
-            primaryColor: const Color(0xFFF59E0B), // Amber
+            primaryColor: const Color(0xFFF59E0B),
             secondaryColor: const Color(0xFFFBBF24),
           ),
         ),
@@ -490,8 +493,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
                   const SizedBox(height: 40),
 
-                  // Time Card
-                  _buildTimeCard(),
+                  // Time Card - Centered
+                  Center(child: _buildTimeCard()),
 
                   const SizedBox(height: 40),
 

@@ -1,7 +1,6 @@
 name: timely
 description: "A new Flutter project."
-publish_to: 'none'
-
+publish_to: "none"
 
 environment:
   sdk: ^3.9.2
@@ -18,6 +17,7 @@ dependencies:
   image_picker: ^1.2.0
   lottie: ^3.3.2
   cupertino_icons: ^1.0.8
+  easy_localization: ^3.0.8
 
 dev_dependencies:
   flutter_test:
@@ -27,8 +27,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # assets:
-  #   - images/a_dot_burr.jpeg
+  assets:
+    - assets/translation/en.json
+    - assets/translation/id.json
   #   - images/a_dot_ham.jpeg
 
   # fonts:

@@ -1,0 +1,40 @@
+{
+  "onboarding": {
+    "welcome_title": "Selamat Datang di Timely",
+    "welcome_subtitle": "Revolusi absensi profesional yang cepat, mudah, dan terpercaya",
+    "smart_notifications_title": "Notifikasi Pintar",
+    "smart_notifications_subtitle": "Sistem pengingat cerdas dengan AI",
+    "multi_language_title": "Multi Bahasa & Personalisasi",
+    "multi_language_subtitle": "Nikmati pengalaman yang dipersonalisasi dengan dukungan multi-bahasa",
+    "skip": "Lewati",
+    "next": "Lanjutkan",
+    "get_started": "Mulai Sekarang"
+  },
+  "login": {
+    "title": "Masuk",
+    "email": "Email",
+    "password": "Password",
+    "login_button": "Masuk",
+    "no_account": "Belum punya akun?",
+    "register": "Daftar"
+  },
+  "settings": "Pengaturan ⚙️",
+  "profile_name": "Ilham",
+  "profile_subtitle": "AI Engineer",
+  "appearance": "Tampilan",
+  "dark_mode": "Mode Gelap",
+  "notifications": "Notifikasi",
+  "preferences": "Preferensi",
+  "language": "Bahasa",
+  "privacy_policy": "Kebijakan Privasi",
+  "terms_of_service": "Syarat & Ketentuan",
+  "about": "Tentang",
+  "account": "Akun",
+  "logout": "Keluar",
+  "cancel": "Batal",
+  "logout_confirm": "Apakah Anda yakin ingin keluar?",
+  "version": "Versi 1.0.0",
+  "app_version_footer": "Timely v1.0.0 • Build 1001",
+  "start": "Mulai Sekarang",
+  "skip": "Lewati"
+}

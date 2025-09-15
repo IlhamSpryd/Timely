@@ -1,14 +1,18 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:provider/provider.dart';
+import 'package:timely/splash_screen.dart';
 import 'package:timely/utils/theme_helper.dart';
-import 'package:timely/views/main/main_wrapper.dart';
+import 'package:timely/widgets/theme_provider.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await EasyLocalization.ensureInitialized();
 
-  // Set system UI overlay style for modern edge-to-edge design
+  // Set system UI
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -19,35 +23,52 @@ void main() async {
     ),
   );
 
-  // Enable edge-to-edge display
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  final savedTheme = await ThemeHelper.loadTheme();
+  // Load theme, fallback ke light jika null
+  final savedTheme = await ThemeHelper.loadTheme() ?? ThemeMode.light;
+
   await initializeDateFormatting('id_ID');
-  runApp(Timely(initialTheme: savedTheme));
+
+  runApp(
+    EasyLocalization(
+      supportedLocales: const [Locale('en'), Locale('id')],
+      path: 'assets/translations',
+      fallbackLocale: const Locale('en'),
+      child: ChangeNotifierProvider(
+        create: (_) => ThemeProvider(initialTheme: savedTheme),
+        child: const TimelyApp(),
+      ),
+    ),
+  );
 }
 
-class Timely extends StatelessWidget {
-  final ThemeMode initialTheme;
-
-  const Timely({super.key, required this.initialTheme});
+class TimelyApp extends StatelessWidget {
+  const TimelyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Timely - Professional Attendance',
-      debugShowCheckedModeBanner: false,
-      themeMode: initialTheme,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      home: const MainWrapper(),
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        return MaterialApp(
+          title: 'Timely',
+          debugShowCheckedModeBanner: false,
+          themeMode: themeProvider.themeMode,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          locale: context.locale,
+          supportedLocales: context.supportedLocales,
+          localizationsDelegates: context.localizationDelegates,
+          home: const SplashScreen(),
+        );
+      },
     );
   }
 }
 
 class AppTheme {
   // Modern Professional Color Palette
-  static const _primaryBlue = Color(0xFF2563EB); // Modern Blue
+  static const _primaryBlue = Color(0xFF2563EB);
   static const _primaryBlueDark = Color(0xFF1D4ED8); // Darker Blue
   static const _accentGreen = Color(0xFF10B981); // Success Green
   static const _accentOrange = Color(0xFFF59E0B); // Warning Orange
