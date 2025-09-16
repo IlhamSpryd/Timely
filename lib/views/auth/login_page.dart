@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:timely/services/auth_services.dart';
@@ -199,7 +200,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               ),
             ],
           ),
-          child: Icon(Icons.access_time_rounded, color: Colors.white, size: 40),
+          child: Image.asset( "assets/images/logoppkd.jpg", fit: BoxFit.contain)
         ),
 
         const SizedBox(height: 24),
@@ -264,7 +265,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 fontWeight: FontWeight.w700,
                 color: colorScheme.onSurface,
               ),
-            ),
+            ).tr(),
 
             const SizedBox(height: 8),
 
@@ -273,7 +274,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurface.withOpacity(0.7),
               ),
-            ),
+            ).tr(),
 
             const SizedBox(height: 32),
 
@@ -471,7 +472,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               decoration: TextDecoration.underline,
               decorationColor: theme.colorScheme.primary.withOpacity(0.5),
             ),
-          ),
+          ).tr(),
         ),
       ],
     );

@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'dart:math';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timely/utils/date_formatter.dart';
 
@@ -24,31 +25,18 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   bool _hasCheckedIn = false;
   bool _hasCheckedOut = false;
   DateTime? _lastCheckDate;
+  DateTime? _checkInTime;
+  DateTime? _checkOutTime;
 
-  // Animation Controllers
-  late final AnimationController _checkInController = AnimationController(
+  // Animation Controllers for swipe gesture
+  late final AnimationController _swipeController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 600),
+    duration: const Duration(milliseconds: 300),
   );
-
-  late final AnimationController _checkOutController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 600),
-  );
-
-  late final AnimationController _pulseController = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 2),
-  )..repeat();
-
-  late final AnimationController _shimmerController = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 3),
-  )..repeat();
 
   late final AnimationController _fadeController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1200),
+    duration: const Duration(milliseconds: 600),
   )..forward();
 
   late final AnimationController _slideController = AnimationController(
@@ -56,16 +44,21 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 800),
   )..forward();
 
-  // Animations
-  late final Animation<double> _fadeAnimation = CurvedAnimation(
-    parent: _fadeController,
-    curve: Curves.easeOutQuart,
-  );
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  )..repeat(reverse: true);
 
-  late final Animation<Offset> _slideAnimation =
-      Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
-        CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
-      );
+  // Swipe gesture tracking
+  double _swipeProgress = 0.0;
+  bool _isSwipeActive = false;
+  String _currentSwipeAction = '';
+
+  // Mock location data
+  final String _currentLocation = "Pusat Pelatihan Kerja Daerah Jakarta Pusat";
+  final String _locationAddress =
+      "Jl. Bendungan Hilir No. 1, RT.10/RW.2, Kb. Melati, Kec. Tanah Abang, Kota Jakarta Pusat, Daerah Khusus Ibukota Jakarta 10210";
+  final bool _isInOfficeArea = true;
 
   @override
   void initState() {
@@ -84,12 +77,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   @override
   void dispose() {
     _timer.cancel();
-    _checkInController.dispose();
-    _checkOutController.dispose();
-    _pulseController.dispose();
-    _shimmerController.dispose();
+    _swipeController.dispose();
     _fadeController.dispose();
     _slideController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -100,9 +91,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       _lastCheckDate = DateTime.parse(lastCheck);
       _hasCheckedIn = prefs.getBool('hasCheckedIn') ?? false;
       _hasCheckedOut = prefs.getBool('hasCheckedOut') ?? false;
+
+      final checkInString = prefs.getString('checkInTime');
+      if (checkInString != null) {
+        _checkInTime = DateTime.parse(checkInString);
+      }
+
+      final checkOutString = prefs.getString('checkOutTime');
+      if (checkOutString != null) {
+        _checkOutTime = DateTime.parse(checkOutString);
+      }
     }
-    if (_hasCheckedIn) _checkInController.value = 1.0;
-    if (_hasCheckedOut) _checkOutController.value = 1.0;
     setState(() {});
   }
 
@@ -113,6 +112,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
     await prefs.setBool('hasCheckedIn', _hasCheckedIn);
     await prefs.setBool('hasCheckedOut', _hasCheckedOut);
+
+    if (_checkInTime != null) {
+      await prefs.setString('checkInTime', _checkInTime!.toIso8601String());
+    }
+
+    if (_checkOutTime != null) {
+      await prefs.setString('checkOutTime', _checkOutTime!.toIso8601String());
+    }
   }
 
   void _resetDailyStatus() {
@@ -120,9 +127,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     if (_lastCheckDate == null || _lastCheckDate!.isBefore(today)) {
       _hasCheckedIn = false;
       _hasCheckedOut = false;
+      _checkInTime = null;
+      _checkOutTime = null;
       _lastCheckDate = today;
-      _checkInController.value = 0.0;
-      _checkOutController.value = 0.0;
       _saveStatus();
     }
   }
@@ -130,409 +137,698 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   void _onCheckIn() {
     setState(() {
       _hasCheckedIn = true;
+      _checkInTime = _now;
       _lastCheckDate = DateTime(_now.year, _now.month, _now.day);
     });
-    _checkInController.forward();
     _saveStatus();
-    widget.showSnackBar("Check-in berhasil ✅");
+    HapticFeedback.mediumImpact();
+    widget.showSnackBar(
+      "✅ Check-in berhasil pada ${DateFormatter.formatTime(_now)}",
+    );
   }
 
   void _onCheckOut() {
     setState(() {
       _hasCheckedOut = true;
+      _checkOutTime = _now;
       _lastCheckDate = DateTime(_now.year, _now.month, _now.day);
     });
-    _checkOutController.forward();
     _saveStatus();
-    widget.showSnackBar("Check-out berhasil ✅");
+    HapticFeedback.mediumImpact();
+    widget.showSnackBar(
+      "✅ Check-out berhasil pada ${DateFormatter.formatTime(_now)}",
+    );
   }
 
-  Widget _buildTimeCard() {
-    final currentTime = DateFormatter.formatTime(_now);
+  void _onSwipeUpdate(DragUpdateDetails details, String action) {
+    setState(() {
+      _swipeProgress = (details.localPosition.dx / 280).clamp(0.0, 1.0);
+      _isSwipeActive = true;
+      _currentSwipeAction = action;
+    });
+
+    if (_swipeProgress > 0.8) {
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  void _onSwipeEnd(String action) {
+    if (_swipeProgress > 0.8) {
+      _swipeController.forward().then((_) {
+        if (action == 'checkin') {
+          _onCheckIn();
+        } else if (action == 'checkout') {
+          _onCheckOut();
+        }
+        _swipeController.reset();
+      });
+    } else {
+      _swipeController.reverse().then((_) {
+        _swipeController.reset();
+      });
+    }
+
+    setState(() {
+      _swipeProgress = 0.0;
+      _isSwipeActive = false;
+      _currentSwipeAction = '';
+    });
+  }
+
+  Widget _buildHeader() {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return AnimatedBuilder(
-      animation: _pulseController,
-      builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: isDarkMode
-                  ? [
-                      const Color(0xFF1E293B).withOpacity(0.8),
-                      const Color(0xFF334155).withOpacity(0.6),
-                    ]
-                  : [
-                      Colors.white.withOpacity(0.9),
-                      Colors.white.withOpacity(0.7),
-                    ],
-            ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-              BoxShadow(
-                color: Colors.black.withOpacity(isDarkMode ? 0.3 : 0.05),
-                blurRadius: 15,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              AnimatedBuilder(
-                animation: _shimmerController,
-                builder: (context, child) {
-                  return ShaderMask(
-                    shaderCallback: (bounds) {
-                      return LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          Theme.of(
-                            context,
-                          ).colorScheme.primary.withOpacity(0.5),
-                          Theme.of(context).colorScheme.primary,
-                          Theme.of(context).colorScheme.secondary,
-                          Theme.of(context).colorScheme.primary,
-                          Theme.of(
-                            context,
-                          ).colorScheme.primary.withOpacity(0.5),
-                        ],
-                        stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
-                        transform: GradientRotation(
-                          _shimmerController.value * 2 * pi,
-                        ),
-                      ).createShader(bounds);
-                    },
-                    child: Text(
-                      currentTime,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                        fontWeight: FontWeight.w300,
-                        letterSpacing: -2,
-                        height: 1.1,
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDarkMode
+              ? [const Color(0xFF1E3A8A), const Color(0xFF3B82F6)]
+              : [const Color(0xFF2563EB), const Color(0xFF1D4ED8)],
+        ),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      " Good ${_getGreeting()}".tr(),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 25,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ).tr(),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Ilham Sepriyadi",
+                      style: const TextStyle(
                         color: Colors.white,
+                        fontSize: 2,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  );
-                },
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: Container(
-                  height: 3,
-                  width: 60,
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(2),
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).colorScheme.primary,
-                        Theme.of(context).colorScheme.secondary,
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.notifications_outlined,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Current Time
+            Center(
+              child: Text(
+                DateFormatter.formatTime(_now),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 36,
+                  fontWeight: FontWeight.w300,
+                  letterSpacing: -1,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                DateFormatter.formatFullDate(_now),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationCard() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+
+    return Container(
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDarkMode ? 0.3 : 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Mock Map Area
+          Container(
+            height: 160,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: isDarkMode
+                  ? const Color(0xFF1E293B)
+                  : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isInOfficeArea
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFEF4444),
+                width: 2,
+              ),
+            ),
+            child: Stack(
+              children: [
+                // Mock map pattern
+                CustomPaint(
+                  size: const Size(double.infinity, 160),
+                  painter: MapPatternPainter(isDarkMode: isDarkMode),
+                ),
+
+                // Location indicator
+                Center(
+                  child: AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, child) {
+                      return Container(
+                        width: 40 + (_pulseController.value * 10),
+                        height: 40 + (_pulseController.value * 10),
+                        decoration: BoxDecoration(
+                          color: _isInOfficeArea
+                              ? const Color(0xFF10B981).withOpacity(0.3)
+                              : const Color(0xFFEF4444).withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: _isInOfficeArea
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFEF4444),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Status badge
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _isInOfficeArea
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFEF4444),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _isInOfficeArea ? Icons.check_circle : Icons.error,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _isInOfficeArea ? "Di Area" : "Luar Area",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ).tr(),
                       ],
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildStatusIndicators() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildStatusCard(
-            title: "Check-in",
-            icon: Icons.login_rounded,
-            isCompleted: _hasCheckedIn,
-            animation: _checkInController,
-            primaryColor: const Color(0xFF10B981),
-            secondaryColor: const Color(0xFF34D399),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildStatusCard(
-            title: "Check-out",
-            icon: Icons.logout_rounded,
-            isCompleted: _hasCheckedOut,
-            animation: _checkOutController,
-            primaryColor: const Color(0xFFF59E0B),
-            secondaryColor: const Color(0xFFFBBF24),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatusCard({
-    required String title,
-    required IconData icon,
-    required bool isCompleted,
-    required AnimationController animation,
-    required Color primaryColor,
-    required Color secondaryColor,
-  }) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-          decoration: BoxDecoration(
-            gradient: isCompleted
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [primaryColor, secondaryColor],
-                  )
-                : LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: isDarkMode
-                        ? [
-                            const Color(0xFF374151).withOpacity(0.7),
-                            const Color(0xFF4B5563).withOpacity(0.5),
-                          ]
-                        : [Colors.grey.shade100, Colors.grey.shade50],
-                  ),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              if (isCompleted) ...[
-                BoxShadow(
-                  color: primaryColor.withOpacity(0.3),
-                  blurRadius: 15,
-                  offset: const Offset(0, 8),
-                ),
-              ] else ...[
-                BoxShadow(
-                  color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
               ],
-            ],
-          ),
-          child: Column(
-            children: [
-              ScaleTransition(
-                scale: Tween<double>(begin: 1.0, end: 1.2).animate(
-                  CurvedAnimation(parent: animation, curve: Curves.elasticOut),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isCompleted
-                        ? Colors.white.withOpacity(0.2)
-                        : (isDarkMode
-                              ? Colors.white.withOpacity(0.1)
-                              : Colors.grey.shade200),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isCompleted ? Icons.check_circle_rounded : icon,
-                    size: 32,
-                    color: isCompleted
-                        ? Colors.white
-                        : (isDarkMode
-                              ? Colors.grey.shade400
-                              : Colors.grey.shade600),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: isCompleted
-                      ? Colors.white
-                      : (isDarkMode
-                            ? Colors.grey.shade400
-                            : Colors.grey.shade700),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildActionButton({
-    required String label,
-    required IconData icon,
-    required bool isEnabled,
-    required VoidCallback? onPressed,
-    required Color primaryColor,
-    required Color secondaryColor,
-  }) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      height: 64,
-      decoration: BoxDecoration(
-        gradient: isEnabled
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [primaryColor, secondaryColor],
-              )
-            : LinearGradient(
-                colors: isDarkMode
-                    ? [Colors.grey.shade700, Colors.grey.shade800]
-                    : [Colors.grey.shade300, Colors.grey.shade400],
-              ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          if (isEnabled) ...[
-            BoxShadow(
-              color: primaryColor.withOpacity(0.4),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
             ),
-          ],
-          BoxShadow(
-            color: Colors.black.withOpacity(isDarkMode ? 0.3 : 0.1),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Location info
+          Row(
+            children: [
+              Icon(
+                Icons.location_on,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _currentLocation,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    Text(
+                      _locationAddress,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  size: 28,
-                  color: isEnabled ? Colors.white : Colors.grey.shade600,
-                ),
-                const SizedBox(width: 16),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: isEnabled ? Colors.white : Colors.grey.shade600,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final today = DateFormatter.formatFullDate(_now);
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildStatusCards() {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: isDarkMode
-          ? const Color(0xFF0F172A)
-          : const Color(0xFFF8FAFC),
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SlideTransition(
-            position: _slideAnimation,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: _hasCheckedIn
+                    ? const Color(0xFF10B981).withOpacity(0.1)
+                    : (isDarkMode
+                          ? const Color(0xFF1E293B)
+                          : const Color(0xFFF8FAFC)),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: _hasCheckedIn
+                      ? const Color(0xFF10B981).withOpacity(0.3)
+                      : Colors.transparent,
+                ),
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 20),
-
-                  // Header
-                  Text(
-                    "Selamat datang",
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: isDarkMode
-                          ? Colors.grey.shade400
-                          : Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Icon(
+                    _hasCheckedIn ? Icons.check_circle : Icons.login_rounded,
+                    color: _hasCheckedIn
+                        ? const Color(0xFF10B981)
+                        : theme.colorScheme.onSurfaceVariant,
+                    size: 28,
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Check In",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: _hasCheckedIn
+                          ? const Color(0xFF10B981)
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ).tr(),
                   const SizedBox(height: 4),
                   Text(
-                    today,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.5,
-                      color: isDarkMode ? Colors.white : Colors.grey.shade900,
+                    _checkInTime != null
+                        ? DateFormatter.formatTime(_checkInTime!)
+                        : "--:--",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-
-                  const SizedBox(height: 40),
-
-                  // Time Card - Centered
-                  Center(child: _buildTimeCard()),
-
-                  const SizedBox(height: 40),
-
-                  // Status Indicators
-                  _buildStatusIndicators(),
-
-                  const SizedBox(height: 40),
-
-                  // Action Buttons
-                  _buildActionButton(
-                    label: "Absen Masuk",
-                    icon: Icons.login_rounded,
-                    isEnabled: !_hasCheckedIn,
-                    onPressed: _hasCheckedIn ? null : _onCheckIn,
-                    primaryColor: const Color(0xFF3B82F6), // Blue
-                    secondaryColor: const Color(0xFF1D4ED8),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  _buildActionButton(
-                    label: "Absen Pulang",
-                    icon: Icons.logout_rounded,
-                    isEnabled: !_hasCheckedOut && _hasCheckedIn,
-                    onPressed: (_hasCheckedOut || !_hasCheckedIn)
-                        ? null
-                        : _onCheckOut,
-                    primaryColor: const Color(0xFFEF4444),
-                    secondaryColor: const Color(0xFFDC2626),
-                  ),
-
-                  const SizedBox(height: 40),
                 ],
               ),
             ),
           ),
+
+          const SizedBox(width: 16),
+
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: _hasCheckedOut
+                    ? const Color(0xFFEF4444).withOpacity(0.1)
+                    : (isDarkMode
+                          ? const Color(0xFF1E293B)
+                          : const Color(0xFFF8FAFC)),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: _hasCheckedOut
+                      ? const Color(0xFFEF4444).withOpacity(0.3)
+                      : Colors.transparent,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    _hasCheckedOut ? Icons.check_circle : Icons.logout_rounded,
+                    color: _hasCheckedOut
+                        ? const Color(0xFFEF4444)
+                        : theme.colorScheme.onSurfaceVariant,
+                    size: 28,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Check Out",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: _hasCheckedOut
+                          ? const Color(0xFFEF4444)
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _checkOutTime != null
+                        ? DateFormatter.formatTime(_checkOutTime!)
+                        : "--:--",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ).tr(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSwipeButton({
+    required String label,
+    required IconData icon,
+    required bool isEnabled,
+    required String action,
+    required Color color,
+  }) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final isCurrentSwipe = _currentSwipeAction == action;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      height: 70,
+      decoration: BoxDecoration(
+        color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(35),
+        border: Border.all(
+          color: isEnabled ? color.withOpacity(0.3) : Colors.transparent,
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Swipe progress background
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            height: 70,
+            width: isCurrentSwipe ? _swipeProgress * 300 : 0,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(35),
+            ),
+          ),
+
+          // Swipe button
+          AnimatedPositioned(
+            duration: Duration(milliseconds: isCurrentSwipe ? 0 : 300),
+            left: isCurrentSwipe ? _swipeProgress * 220 : 4,
+            top: 4,
+            child: GestureDetector(
+              onPanUpdate: isEnabled
+                  ? (details) => _onSwipeUpdate(details, action)
+                  : null,
+              onPanEnd: isEnabled ? (_) => _onSwipeEnd(action) : null,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  color: isEnabled ? color : theme.colorScheme.onSurfaceVariant,
+                  borderRadius: BorderRadius.circular(31),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(icon, color: Colors.white, size: 24),
+              ),
+            ),
+          ),
+
+          // Label
+          Center(
+            child: Text(
+              isCurrentSwipe && _swipeProgress > 0.7
+                  ? "Lepas untuk $label"
+                  : "Geser untuk $label",
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: isEnabled
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ).tr(),
+          ),
+
+          // Arrow indicators
+          if (isEnabled) ...[
+            Positioned(
+              right: 80,
+              top: 0,
+              bottom: 0,
+              child: Row(
+                children: List.generate(3, (index) {
+                  return AnimatedContainer(
+                    duration: Duration(milliseconds: 200 + (index * 100)),
+                    margin: const EdgeInsets.only(right: 4),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _getGreeting() {
+    final hour = _now.hour;
+    if (hour < 12) return "Morning".tr();
+    if (hour < 15) return "Afternoon".tr();
+    if (hour < 18) return "Evening".tr();
+    return "Night".tr();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
+      body: FadeTransition(
+        opacity: _fadeController,
+        child: SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero)
+              .animate(
+                CurvedAnimation(
+                  parent: _slideController,
+                  curve: Curves.easeOutCubic,
+                ),
+              ),
+          child: Column(
+            children: [
+              // Header with time
+              _buildHeader(),
+
+              // Scrollable content
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 5),
+
+                      // Location and Map
+                      _buildLocationCard(),
+
+                      const SizedBox(height: 20),
+
+                      // Status Cards
+                      _buildStatusCards(),
+
+                      const SizedBox(height: 40),
+
+                      // Swipe Buttons
+                      if (!_hasCheckedIn && _isInOfficeArea) ...[
+                        _buildSwipeButton(
+                          label: "Check In",
+                          icon: Icons.login_rounded,
+                          isEnabled: !_hasCheckedIn,
+                          action: "checkin",
+                          color: const Color(0xFF10B981),
+                        ),
+                      ],
+
+                      if (_hasCheckedIn &&
+                          !_hasCheckedOut &&
+                          _isInOfficeArea) ...[
+                        _buildSwipeButton(
+                          label: "Check Out",
+                          icon: Icons.logout_rounded,
+                          isEnabled: !_hasCheckedOut,
+                          action: "checkout",
+                          color: const Color(0xFFEF4444),
+                        ),
+                      ],
+
+                      if (!_isInOfficeArea) ...[
+                        Container(
+                          margin: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEF4444).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFFEF4444).withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.location_off,
+                                color: const Color(0xFFEF4444),
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  "Anda berada di luar area kantor. Silakan mendekat ke lokasi yang telah ditentukan.",
+                                  style: TextStyle(
+                                    color: const Color(0xFFEF4444),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ).tr(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 40),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+// Custom painter for map pattern
+class MapPatternPainter extends CustomPainter {
+  final bool isDarkMode;
+
+  MapPatternPainter({required this.isDarkMode});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = isDarkMode
+          ? Colors.white.withOpacity(0.1)
+          : Colors.grey.withOpacity(0.2)
+      ..strokeWidth = 1;
+
+    // Draw grid pattern to simulate map
+    for (int i = 0; i < 10; i++) {
+      canvas.drawLine(
+        Offset(i * (size.width / 10), 0),
+        Offset(i * (size.width / 10), size.height),
+        paint,
+      );
+    }
+
+    for (int i = 0; i < 6; i++) {
+      canvas.drawLine(
+        Offset(0, i * (size.height / 6)),
+        Offset(size.width, i * (size.height / 6)),
+        paint,
+      );
+    }
+
+    // Draw some roads
+    paint.strokeWidth = 2;
+    paint.color = isDarkMode
+        ? Colors.white.withOpacity(0.2)
+        : Colors.grey.withOpacity(0.4);
+
+    canvas.drawLine(
+      Offset(size.width * 0.2, 0),
+      Offset(size.width * 0.8, size.height),
+      paint,
+    );
+
+    canvas.drawLine(
+      Offset(0, size.height * 0.3),
+      Offset(size.width, size.height * 0.7),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

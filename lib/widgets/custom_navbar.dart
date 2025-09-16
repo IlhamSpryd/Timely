@@ -16,16 +16,29 @@ class CustomNavbar extends StatelessWidget {
       currentIndex: currentIndex,
       onTap: onTap,
       type: BottomNavigationBarType.fixed,
-      selectedItemColor: Theme.of(context).colorScheme.primary,
+      selectedItemColor: Theme.of(context).colorScheme.onPrimaryContainer,
       unselectedItemColor: Colors.grey,
       items: const [
         BottomNavigationBarItem(
-          icon: Icon(Icons.home),
-          label: "Home",
+          icon: ImageIcon(AssetImage("assets/images/homeon.png")),
+          activeIcon: ImageIcon(AssetImage("assets/images/homeoff.png")),
+          label: " ",
         ),
-        BottomNavigationBarItem(icon: Icon(Icons.history), label: "History"),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
-        BottomNavigationBarItem(icon: Icon(Icons.settings), label: "Settings"),
+        BottomNavigationBarItem(
+          icon: ImageIcon(AssetImage("assets/images/historyoff.png")),
+          activeIcon: ImageIcon(AssetImage("assets/images/historyon.png")),
+          label: " ",
+        ),
+        BottomNavigationBarItem(
+          icon: ImageIcon(AssetImage("assets/images/chartoff.png")),
+          activeIcon: ImageIcon(AssetImage("assets/images/charton.png")),
+          label: " ",
+        ),
+        BottomNavigationBarItem(
+          icon: ImageIcon(AssetImage("assets/images/useroff.png")),
+          activeIcon: ImageIcon(AssetImage("assets/images/useron.png")),
+          label: " ",
+        ),
       ],
     );
   }

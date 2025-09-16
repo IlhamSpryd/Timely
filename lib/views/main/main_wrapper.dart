@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:timely/views/main/home_page.dart';
 import 'package:timely/views/main/history_page.dart';
-import 'package:timely/views/main/profile_page.dart';
+import 'package:timely/views/main/home_page.dart';
 import 'package:timely/views/main/settings_page.dart';
+import 'package:timely/views/main/stats.dart';
 import 'package:timely/widgets/custom_navbar.dart';
 
 class MainWrapper extends StatefulWidget {
@@ -34,7 +34,7 @@ class _MainWrapperState extends State<MainWrapper> {
         },
       ),
       const HistoryPage(),
-      const ProfilePage(),
+      const StatisticsPage(),
       SettingsPage(updateTheme: widget.updateTheme),
     ];
   }
