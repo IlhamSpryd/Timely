@@ -1632,7 +1632,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
           mapController?.animateCamera(
             CameraUpdate.newCameraPosition(
-              CameraPosition(target: _currentPosition, zoom: 16),
+              CameraPosition(target: _currentPosition, zoom: 15),
             ),
           );
         });

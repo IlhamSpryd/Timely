@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:timely/api/auth_api.dart';
 import 'package:timely/services/auth_services.dart';
 import 'package:timely/views/auth/login_page.dart';
 import 'package:timely/views/main/main_wrapper.dart';
@@ -124,46 +125,69 @@ class _RegisterPageState extends State<RegisterPage>
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
-
-    // Haptic feedback
     HapticFeedback.lightImpact();
 
-    // Simulate API call and save login state
-    await Future.delayed(const Duration(milliseconds: 2000));
+    try {
+      final authApi = AuthApi();
+      final authService = AuthService();
 
-    // Save login state
-    final authService = AuthService();
-    await authService.login(_emailController.text);
-
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              const MainWrapper(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position:
-                    Tween<Offset>(
-                      begin: const Offset(1.0, 0.0),
-                      end: Offset.zero,
-                    ).animate(
-                      CurvedAnimation(
-                        parent: animation,
-                        curve: Curves.easeInOutCubic,
-                      ),
-                    ),
-                child: child,
-              ),
-            );
-          },
-          transitionDuration: const Duration(milliseconds: 600),
-        ),
+      final registerResponse = await authApi.register(
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+        batchId: int.parse(_batchController.text.trim()), // pastiin integer
+        trainingId: int.parse(_trainingController.text.trim()), // juga integer
+        jenisKelamin: "Laki-laki", // sementara hardcode, bisa pake dropdown
       );
+
+      if (registerResponse.data != null) {
+        final token = registerResponse.data!.token ?? "";
+        final email = registerResponse.data!.user?.email ?? "";
+
+        // simpan ke SharedPreferences
+        await authService.saveLogin(email, token);
+
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) =>
+                  const MainWrapper(),
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position:
+                            Tween<Offset>(
+                              begin: const Offset(1.0, 0.0),
+                              end: Offset.zero,
+                            ).animate(
+                              CurvedAnimation(
+                                parent: animation,
+                                curve: Curves.easeInOutCubic,
+                              ),
+                            ),
+                        child: child,
+                      ),
+                    );
+                  },
+              transitionDuration: const Duration(milliseconds: 600),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Registrasi gagal: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

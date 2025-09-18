@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:timely/views/main/main_wrapper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timely/views/auth/login_page.dart';
 
 class LiquidOnboarding extends StatefulWidget {
   const LiquidOnboarding({super.key});
@@ -182,11 +183,16 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
     HapticFeedback.mediumImpact();
     await _fadeController.reverse();
 
+    // ✅ simpan state onboarding selesai
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('hasSeenOnboarding', true);
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (context, animation, _) => const MainWrapper(),
+          // 🔹 langsung ke LoginPage, bukan MainWrapper
+          pageBuilder: (context, animation, _) => const LoginPage(),
           transitionDuration: const Duration(milliseconds: 800),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(
