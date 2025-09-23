@@ -11,6 +11,7 @@ import 'package:timely/widgets/theme_provider.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EasyLocalization.ensureInitialized();
+  await initializeDateFormatting('id_ID');
 
   // Set system UI
   SystemChrome.setSystemUIOverlayStyle(
@@ -22,13 +23,10 @@ Future<void> main() async {
       systemNavigationBarDividerColor: Colors.transparent,
     ),
   );
-
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  // Load theme, fallback ke light jika null
-  final savedTheme = await ThemeHelper.loadTheme() ?? ThemeMode.light;
-
-  await initializeDateFormatting('id_ID');
+  // Load theme
+  final savedTheme = await ThemeHelper.loadTheme();
 
   runApp(
     EasyLocalization(

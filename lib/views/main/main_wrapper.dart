@@ -22,7 +22,7 @@ class _MainWrapperState extends State<MainWrapper> {
   void initState() {
     super.initState();
     _pages = [
-      HomePage(
+      ModernHomePage(
         showSnackBar: (msg) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

@@ -1,7 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:timely/services/auth_services.dart';
+import 'package:timely/services/auth_repository.dart'; // Ganti dengan AuthRepository
 import 'package:timely/views/auth/register_page.dart';
 import 'package:timely/views/main/main_wrapper.dart';
 
@@ -16,11 +16,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-
   late AnimationController _fadeController;
   late AnimationController _slideController;
   late AnimationController _scaleController;
-
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
@@ -28,10 +26,16 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   bool _obscurePassword = true;
   bool _isLoading = false;
 
+  final AuthRepository _authRepository =
+      AuthRepository(); // Gunakan AuthRepository
+
   @override
   void initState() {
     super.initState();
+    _initializeAnimations();
+  }
 
+  void _initializeAnimations() {
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
@@ -84,63 +88,63 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
-
     HapticFeedback.lightImpact();
 
     try {
-      // Panggil AuthRepository
-      final authService = AuthService();
-      final success = await authService.login(
+      // Gunakan AuthRepository untuk login
+      final success = await _authRepository.login(
         _emailController.text.trim(),
         _passwordController.text.trim(),
       );
 
       if (success && mounted) {
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                const MainWrapper(),
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position:
-                          Tween<Offset>(
-                            begin: const Offset(1.0, 0.0),
-                            end: Offset.zero,
-                          ).animate(
-                            CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeInOutCubic,
-                            ),
-                          ),
-                      child: child,
-                    ),
-                  );
-                },
-            transitionDuration: const Duration(milliseconds: 600),
-          ),
-        );
+        _navigateToMain();
       } else {
-        // kalau gagal login
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Login gagal, cek email/password")),
-          );
-        }
+        _showLoginError("Login gagal, cek email/password");
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
-      }
+      _showLoginError("Error: $e");
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  void _navigateToMain() {
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const MainWrapper(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(1.0, 0.0),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOutCubic,
+                    ),
+                  ),
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 600),
+      ),
+    );
+  }
+
+  void _showLoginError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -219,7 +223,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               ),
             ],
           ),
-          child: Image.asset("assets/images/logoppkd.jpg", fit: BoxFit.contain),
+          child: Image.asset("assets/images/logo2.png", fit: BoxFit.contain),
         ),
 
         const SizedBox(height: 24),

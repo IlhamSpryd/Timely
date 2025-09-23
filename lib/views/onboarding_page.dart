@@ -4,186 +4,217 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timely/views/auth/login_page.dart';
 
-class LiquidOnboarding extends StatefulWidget {
-  const LiquidOnboarding({super.key});
+class Onboarding extends StatefulWidget {
+  const Onboarding({super.key});
 
   @override
-  State<LiquidOnboarding> createState() => _LiquidOnboardingState();
+  State<Onboarding> createState() => _OnboardingState();
 }
 
-class _LiquidOnboardingState extends State<LiquidOnboarding>
-    with TickerProviderStateMixin {
+class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
   final PageController _pageController = PageController();
-  late AnimationController _liquidController;
   late AnimationController _parallaxController;
   late AnimationController _fadeController;
+  late AnimationController _slideController;
 
   int _currentPage = 0;
-  bool _isAnimating = false;
+  bool _isTransitioning = false;
 
-  final List<OnboardingData> _pages = [
-    OnboardingData(
+  // App theme colors
+  static const Color _primaryBlue = Color(0xFF2563EB);
+  static const Color _accentGreen = Color(0xFF10B981);
+  static const Color _accentOrange = Color(0xFFF59E0B);
+  static const Color _lightSurface = Color(0xFFFDFDFD);
+  static const Color _lightBackground = Color(0xFFF8FAFC);
+  static const Color _textPrimary = Color(0xFF0F172A);
+  static const Color _textSecondary = Color(0xFF475569);
+
+  final List<OnboardingPageData> _pages = [
+    OnboardingPageData(
       title: "Selamat Datang di Timely",
       subtitle:
-          "Revolusi absensi profesional yang cepat, mudah, dan terpercaya untuk era digital",
-      icon: Icons.access_time_rounded,
-      gradient: const [Color(0xFF667EEA), Color(0xFF764BA2), Color(0xFF2563EB)],
-      accentColor: Color(0xFF10B981),
-      backgroundElements: [
-        FloatingElement(
-          icon: Icons.schedule,
-          size: 60,
+          "Revolusi absensi profesional yang cepat, mudah, dan terpercaya untuk era digital modern",
+      iconData: Icons.access_time_rounded,
+      backgroundColor: _lightBackground,
+      primaryColor: _primaryBlue,
+      illustrations: [
+        IllustrationElement(
+          icon: Icons.schedule_rounded,
+          color: _primaryBlue,
+          size: 48,
+          position: Offset(0.15, 0.25),
           opacity: 0.1,
-          initialX: 0.8,
-          initialY: 0.2,
-          rotationSpeed: 0.5,
         ),
-        FloatingElement(
-          icon: Icons.business,
-          size: 40,
+        IllustrationElement(
+          icon: Icons.business_rounded,
+          color: _primaryBlue,
+          size: 36,
+          position: Offset(0.8, 0.3),
           opacity: 0.08,
-          initialX: 0.15,
-          initialY: 0.7,
-          rotationSpeed: -0.3,
         ),
-        FloatingElement(
-          icon: Icons.person_pin_circle,
-          size: 35,
-          opacity: 0.12,
-          initialX: 0.9,
-          initialY: 0.8,
-          rotationSpeed: 0.4,
+        IllustrationElement(
+          icon: Icons.people_rounded,
+          color: _primaryBlue,
+          size: 42,
+          position: Offset(0.2, 0.7),
+          opacity: 0.06,
+        ),
+        IllustrationElement(
+          icon: Icons.timer_rounded,
+          color: _primaryBlue,
+          size: 32,
+          position: Offset(0.85, 0.75),
+          opacity: 0.09,
         ),
       ],
+      features: ['Efisiensi Tinggi', 'Keamanan Terjamin'],
     ),
-    OnboardingData(
+    OnboardingPageData(
       title: "Notifikasi Pintar",
       subtitle:
-          "Sistem pengingat cerdas dengan AI yang memastikan Anda tidak pernah terlambat absen",
-      icon: Icons.notifications_active_rounded,
-      gradient: const [Color(0xFF11998E), Color(0xFF38EF7D), Color(0xFF10B981)],
-      accentColor: Color(0xFFF59E0B),
-      backgroundElements: [
-        FloatingElement(
-          icon: Icons.alarm,
-          size: 55,
+          "Sistem pengingat cerdas dengan AI yang memastikan Anda tidak pernah terlambat absen lagi",
+      iconData: Icons.notifications_active_rounded,
+      backgroundColor: _lightBackground,
+      primaryColor: _accentGreen,
+      illustrations: [
+        IllustrationElement(
+          icon: Icons.smart_toy_rounded,
+          color: _accentGreen,
+          size: 46,
+          position: Offset(0.12, 0.22),
           opacity: 0.1,
-          initialX: 0.1,
-          initialY: 0.15,
-          rotationSpeed: 0.6,
         ),
-        FloatingElement(
-          icon: Icons.smart_toy,
-          size: 45,
-          opacity: 0.09,
-          initialX: 0.85,
-          initialY: 0.3,
-          rotationSpeed: -0.4,
-        ),
-        FloatingElement(
-          icon: Icons.psychology,
+        IllustrationElement(
+          icon: Icons.alarm_rounded,
+          color: _accentGreen,
           size: 38,
-          opacity: 0.11,
-          initialX: 0.2,
-          initialY: 0.75,
-          rotationSpeed: 0.35,
-        ),
-      ],
-    ),
-    OnboardingData(
-      title: "Multi Bahasa & Personalisasi",
-      subtitle:
-          "Nikmati pengalaman yang dipersonalisasi dengan dukungan multi-bahasa dan tema dinamis",
-      icon: Icons.language_rounded,
-      gradient: const [
-        Color(0xFFFF6B6B),
-        Color(0xFF4ECDC4),
-        Color(0xFF45B7D1),
-        Color(0xFF8B5CF6),
-      ],
-      accentColor: Color(0xFFEF4444),
-      backgroundElements: [
-        FloatingElement(
-          icon: Icons.translate,
-          size: 50,
-          opacity: 0.1,
-          initialX: 0.8,
-          initialY: 0.25,
-          rotationSpeed: 0.45,
-        ),
-        FloatingElement(
-          icon: Icons.palette,
-          size: 42,
+          position: Offset(0.82, 0.28),
           opacity: 0.08,
-          initialX: 0.15,
-          initialY: 0.6,
-          rotationSpeed: -0.5,
         ),
-        FloatingElement(
-          icon: Icons.favorite,
-          size: 36,
-          opacity: 0.12,
-          initialX: 0.9,
-          initialY: 0.7,
-          rotationSpeed: 0.3,
+        IllustrationElement(
+          icon: Icons.psychology_rounded,
+          color: _accentGreen,
+          size: 34,
+          position: Offset(0.18, 0.72),
+          opacity: 0.07,
+        ),
+        IllustrationElement(
+          icon: Icons.lightbulb_rounded,
+          color: _accentGreen,
+          size: 40,
+          position: Offset(0.88, 0.78),
+          opacity: 0.09,
         ),
       ],
+      features: ['AI-Powered', 'Real-time'],
+    ),
+    OnboardingPageData(
+      title: "Personalisasi Lengkap",
+      subtitle:
+          "Nikmati pengalaman yang dipersonalisasi dengan dukungan multi-bahasa dan tema yang dapat disesuaikan",
+      iconData: Icons.tune_rounded,
+      backgroundColor: _lightBackground,
+      primaryColor: _accentOrange,
+      illustrations: [
+        IllustrationElement(
+          icon: Icons.language_rounded,
+          color: _accentOrange,
+          size: 44,
+          position: Offset(0.14, 0.26),
+          opacity: 0.1,
+        ),
+        IllustrationElement(
+          icon: Icons.palette_rounded,
+          color: _accentOrange,
+          size: 40,
+          position: Offset(0.84, 0.32),
+          opacity: 0.08,
+        ),
+        IllustrationElement(
+          icon: Icons.settings_rounded,
+          color: _accentOrange,
+          size: 36,
+          position: Offset(0.16, 0.74),
+          opacity: 0.07,
+        ),
+        IllustrationElement(
+          icon: Icons.auto_awesome_rounded,
+          color: _accentOrange,
+          size: 38,
+          position: Offset(0.86, 0.76),
+          opacity: 0.09,
+        ),
+      ],
+      features: ['Multi-bahasa', 'Tema Dinamis'],
     ),
   ];
 
   @override
   void initState() {
     super.initState();
-    _liquidController = AnimationController(
+    _parallaxController = AnimationController(
+      duration: const Duration(seconds: 15),
+      vsync: this,
+    )..repeat();
+
+    _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-    _parallaxController = AnimationController(
-      duration: const Duration(seconds: 20),
-      vsync: this,
-    )..repeat();
-    _fadeController = AnimationController(
+
+    _slideController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
     );
 
     _fadeController.forward();
+    _slideController.forward();
   }
 
   @override
   void dispose() {
-    _liquidController.dispose();
     _parallaxController.dispose();
     _fadeController.dispose();
+    _slideController.dispose();
     super.dispose();
   }
 
   void _nextPage() async {
-    if (_isAnimating) return;
+    if (_isTransitioning) return;
 
     if (_currentPage < _pages.length - 1) {
-      setState(() => _isAnimating = true);
-
+      setState(() => _isTransitioning = true);
       HapticFeedback.lightImpact();
-      await _liquidController.forward();
 
       await _pageController.nextPage(
-        duration: const Duration(milliseconds: 600),
+        duration: const Duration(milliseconds: 800),
         curve: Curves.easeInOutCubicEmphasized,
       );
 
-      _liquidController.reset();
-      setState(() => _isAnimating = false);
+      setState(() => _isTransitioning = false);
     } else {
       _finishOnboarding();
     }
+  }
+
+  void _previousPage() async {
+    if (_isTransitioning || _currentPage == 0) return;
+
+    setState(() => _isTransitioning = true);
+    HapticFeedback.lightImpact();
+
+    await _pageController.previousPage(
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.easeInOutCubicEmphasized,
+    );
+
+    setState(() => _isTransitioning = false);
   }
 
   void _finishOnboarding() async {
     HapticFeedback.mediumImpact();
     await _fadeController.reverse();
 
-    // ✅ simpan state onboarding selesai
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('hasSeenOnboarding', true);
 
@@ -191,24 +222,23 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          // 🔹 langsung ke LoginPage, bukan MainWrapper
           pageBuilder: (context, animation, _) => const LoginPage(),
-          transitionDuration: const Duration(milliseconds: 800),
+          transitionDuration: const Duration(milliseconds: 900),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(
               opacity: CurvedAnimation(
                 parent: animation,
-                curve: Curves.easeInOut,
+                curve: Curves.easeInOutCubic,
               ),
               child: SlideTransition(
                 position:
                     Tween<Offset>(
-                      begin: const Offset(0, 0.1),
+                      begin: const Offset(0, 0.05),
                       end: Offset.zero,
                     ).animate(
                       CurvedAnimation(
                         parent: animation,
-                        curve: Curves.easeOutCubic,
+                        curve: Curves.easeOutQuart,
                       ),
                     ),
                 child: child,
@@ -223,20 +253,25 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: _lightBackground,
       body: AnimatedBuilder(
         animation: _fadeController,
         builder: (context, child) {
-          return Opacity(
-            opacity: _fadeController.value,
+          return FadeTransition(
+            opacity: _fadeController,
             child: Stack(
               children: [
-                // Animated Background
-                _buildAnimatedBackground(),
+                // Parallax Background
+                _buildParallaxBackground(),
 
                 // Main Content
                 SafeArea(
                   child: Column(
                     children: [
+                      // Skip Button
+                      _buildSkipButton(),
+
+                      // Page Content
                       Expanded(
                         child: PageView.builder(
                           controller: _pageController,
@@ -256,9 +291,6 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
                     ],
                   ),
                 ),
-
-                // Liquid Swipe Effect Overlay
-                if (_isAnimating) _buildLiquidOverlay(),
               ],
             ),
           );
@@ -267,27 +299,44 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
     );
   }
 
-  Widget _buildAnimatedBackground() {
-    final currentPageData = _pages[_currentPage];
+  Widget _buildSkipButton() {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Align(
+        alignment: Alignment.topRight,
+        child: TextButton(
+          onPressed: _finishOnboarding,
+          style: TextButton.styleFrom(
+            foregroundColor: _textSecondary,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          child: Text(
+            "Lewati",
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildParallaxBackground() {
+    final currentPage = _pages[_currentPage];
 
     return AnimatedBuilder(
       animation: _parallaxController,
       builder: (context, child) {
         return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: currentPageData.gradient,
-              stops: _generateStops(currentPageData.gradient.length),
-              transform: GradientRotation(
-                (_parallaxController.value * 2 * 3.14159) * 0.1,
-              ),
-            ),
-          ),
+          color: currentPage.backgroundColor,
           child: Stack(
-            children: currentPageData.backgroundElements.map((element) {
-              return _buildFloatingElement(element);
+            children: currentPage.illustrations.map((illustration) {
+              return _buildParallaxElement(illustration);
             }).toList(),
           ),
         );
@@ -295,34 +344,30 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
     );
   }
 
-  List<double> _generateStops(int length) {
-    return List.generate(length, (index) => index / (length - 1));
-  }
-
-  Widget _buildFloatingElement(FloatingElement element) {
+  Widget _buildParallaxElement(IllustrationElement element) {
     return AnimatedBuilder(
       animation: _parallaxController,
       builder: (context, child) {
         final screenSize = MediaQuery.of(context).size;
-        final animationValue = _parallaxController.value;
+        final parallaxValue = _parallaxController.value;
 
+        // Subtle parallax movement
         final x =
-            (element.initialX + (animationValue * 0.1) % 1.0) *
-            screenSize.width;
+            element.position.dx * screenSize.width +
+            (parallaxValue * 20) * (element.position.dx - 0.5);
         final y =
-            (element.initialY + (animationValue * 0.05) % 1.0) *
-            screenSize.height;
-        final rotation = animationValue * element.rotationSpeed * 2 * 3.14159;
+            element.position.dy * screenSize.height +
+            (parallaxValue * 15) * (element.position.dy - 0.5);
 
         return Positioned(
           left: x,
           top: y,
           child: Transform.rotate(
-            angle: rotation,
+            angle: parallaxValue * 0.5,
             child: Icon(
               element.icon,
               size: element.size,
-              color: Colors.white.withOpacity(element.opacity),
+              color: element.color.withOpacity(element.opacity),
             ),
           ),
         );
@@ -334,33 +379,30 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
     final pageData = _pages[index];
 
     return AnimatedBuilder(
-      animation: _pageController.hasClients
-          ? _pageController
-          : AnimationController(vsync: this),
+      animation: _slideController,
       builder: (context, child) {
-        double value = 1.0;
-        if (_pageController.position.haveDimensions) {
-          value = _pageController.page! - index;
-          value = (1 - (value.abs() * 0.4)).clamp(0.0, 1.0);
-        }
-
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, (1 - value) * 100),
-            child: Transform.scale(scale: 0.8 + (0.2 * value), child: child),
-          ),
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero)
+              .animate(
+                CurvedAnimation(
+                  parent: _slideController,
+                  curve: Curves.easeOutQuart,
+                ),
+              ),
+          child: child,
         );
       },
       child: Padding(
-        padding: const EdgeInsets.all(32.0),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Main Icon with Pulse Animation
+            // Main Icon with Clean Design
             TweenAnimationBuilder(
+              duration: const Duration(milliseconds: 1200),
               tween: Tween<double>(begin: 0.8, end: 1.0),
-              duration: const Duration(seconds: 2),
+              curve: Curves.elasticOut,
               builder: (context, scale, child) {
                 return Transform.scale(
                   scale: scale,
@@ -368,111 +410,127 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
                     width: 120,
                     height: 120,
                     decoration: BoxDecoration(
+                      color: _lightSurface,
                       shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          Colors.white.withOpacity(0.3),
-                          Colors.white.withOpacity(0.1),
-                          Colors.transparent,
-                        ],
-                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: pageData.accentColor.withOpacity(0.3),
+                          color: pageData.primaryColor.withOpacity(0.1),
                           blurRadius: 30,
-                          spreadRadius: 5,
+                          spreadRadius: 0,
+                          offset: const Offset(0, 8),
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 20,
+                          spreadRadius: 0,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: Icon(pageData.icon, size: 60, color: Colors.white),
+                    child: Icon(
+                      pageData.iconData,
+                      size: 48,
+                      color: pageData.primaryColor,
+                    ),
                   ),
                 );
               },
             ),
 
-            const SizedBox(height: 60),
+            const SizedBox(height: 48),
 
-            // Title with Typewriter Effect
-            AnimatedDefaultTextStyle(
+            // Title
+            AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
-              style: GoogleFonts.inter(
-                fontSize: 32,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: -1,
-                height: 1.2,
+              child: Text(
+                pageData.title,
+                key: ValueKey('title_$index'),
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: _textPrimary,
+                  letterSpacing: -0.5,
+                  height: 1.2,
+                ),
               ),
-              child: Text(pageData.title, textAlign: TextAlign.center),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-            // Subtitle with Fade In
-            AnimatedDefaultTextStyle(
+            // Subtitle
+            AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
-              style: GoogleFonts.inter(
-                fontSize: 18,
-                fontWeight: FontWeight.w400,
-                color: Colors.white.withOpacity(0.9),
-                letterSpacing: 0.5,
-                height: 1.5,
+              child: Text(
+                pageData.subtitle,
+                key: ValueKey('subtitle_$index'),
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                  color: _textSecondary,
+                  letterSpacing: 0.1,
+                  height: 1.5,
+                ),
               ),
-              child: Text(pageData.subtitle, textAlign: TextAlign.center),
             ),
 
             const SizedBox(height: 40),
 
             // Feature Highlights
-            _buildFeatureHighlights(index),
+            _buildFeatureHighlights(pageData),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFeatureHighlights(int index) {
-    final features = [
-      ['⚡', 'Cepat & Efisien', '🔒', 'Aman & Terpercaya'],
-      ['🧠', 'AI-Powered', '📱', 'Cross-Platform'],
-      ['🌍', 'Multi-Language', '🎨', 'Customizable'],
-    ];
-
+  Widget _buildFeatureHighlights(OnboardingPageData pageData) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: List.generate(2, (i) {
-        return Column(
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.3),
-                  width: 1,
+      children: pageData.features.map((feature) {
+        final featureIndex = pageData.features.indexOf(feature);
+        return TweenAnimationBuilder(
+          duration: Duration(milliseconds: 600 + (featureIndex * 100)),
+          tween: Tween<double>(begin: 0.0, end: 1.0),
+          curve: Curves.easeOutBack,
+          builder: (context, value, child) {
+            return Transform.scale(
+              scale: value,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
                 ),
-              ),
-              child: Center(
+                decoration: BoxDecoration(
+                  color: _lightSurface,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: pageData.primaryColor.withOpacity(0.2),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: pageData.primaryColor.withOpacity(0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
                 child: Text(
-                  features[index][i * 2],
-                  style: const TextStyle(fontSize: 24),
+                  feature,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: pageData.primaryColor,
+                    letterSpacing: 0.2,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              features[index][i * 2 + 1],
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.white.withOpacity(0.8),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+            );
+          },
         );
-      }),
+      }).toList(),
     );
   }
 
@@ -482,30 +540,22 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Animated Progress Indicators
+          // Page Indicators
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(_pages.length, (index) {
+              final isActive = _currentPage == index;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 400),
                 curve: Curves.easeInOutCubicEmphasized,
                 margin: const EdgeInsets.symmetric(horizontal: 4),
-                width: _currentPage == index ? 32 : 12,
-                height: 6,
+                width: isActive ? 28 : 8,
+                height: 8,
                 decoration: BoxDecoration(
-                  color: _currentPage == index
-                      ? Colors.white
-                      : Colors.white.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(3),
-                  boxShadow: _currentPage == index
-                      ? [
-                          BoxShadow(
-                            color: Colors.white.withOpacity(0.5),
-                            blurRadius: 8,
-                            spreadRadius: 1,
-                          ),
-                        ]
-                      : null,
+                  color: isActive
+                      ? _pages[_currentPage].primaryColor
+                      : _pages[_currentPage].primaryColor.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(4),
                 ),
               );
             }),
@@ -513,86 +563,75 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
 
           const SizedBox(height: 32),
 
-          // Action Buttons
+          // Navigation Buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Skip Button
-              TextButton(
-                onPressed: _finishOnboarding,
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.white.withOpacity(0.8),
+              // Previous Button
+              if (_currentPage > 0)
+                OutlinedButton(
+                  onPressed: _previousPage,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _textSecondary,
+                    side: BorderSide(color: _textSecondary.withOpacity(0.3)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.arrow_back_ios, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        "Kembali",
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                const SizedBox(width: 100),
+
+              // Next/Start Button
+              ElevatedButton(
+                onPressed: _nextPage,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pages[_currentPage].primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shadowColor: _pages[_currentPage].primaryColor.withOpacity(
+                    0.3,
+                  ),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
+                    horizontal: 32,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      "Lewati",
+                      _currentPage == _pages.length - 1
+                          ? "Mulai Sekarang"
+                          : "Lanjutkan",
                       style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.1,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_ios, size: 14),
-                  ],
-                ),
-              ),
-
-              // Next/Get Started Button
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.white, Colors.white.withOpacity(0.9)],
-                  ),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
                     ),
                   ],
-                ),
-                child: ElevatedButton(
-                  onPressed: _nextPage,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: _pages[_currentPage].gradient.first,
-                    shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _currentPage == _pages.length - 1
-                            ? "Mulai Sekarang"
-                            : "Lanjutkan",
-                        style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        _currentPage == _pages.length - 1
-                            ? Icons.rocket_launch
-                            : Icons.arrow_forward,
-                        size: 18,
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ],
@@ -601,99 +640,41 @@ class _LiquidOnboardingState extends State<LiquidOnboarding>
       ),
     );
   }
-
-  Widget _buildLiquidOverlay() {
-    return AnimatedBuilder(
-      animation: _liquidController,
-      builder: (context, child) {
-        return CustomPaint(
-          painter: LiquidPainter(
-            _liquidController.value,
-            _pages[_currentPage].gradient,
-          ),
-          size: Size.infinite,
-        );
-      },
-    );
-  }
 }
 
 // Data Classes
-class OnboardingData {
+class OnboardingPageData {
   final String title;
   final String subtitle;
-  final IconData icon;
-  final List<Color> gradient;
-  final Color accentColor;
-  final List<FloatingElement> backgroundElements;
+  final IconData iconData;
+  final Color backgroundColor;
+  final Color primaryColor;
+  final List<IllustrationElement> illustrations;
+  final List<String> features;
 
-  OnboardingData({
+  OnboardingPageData({
     required this.title,
     required this.subtitle,
-    required this.icon,
-    required this.gradient,
-    required this.accentColor,
-    required this.backgroundElements,
+    required this.iconData,
+    required this.backgroundColor,
+    required this.primaryColor,
+    required this.illustrations,
+    required this.features,
   });
 }
 
-class FloatingElement {
+class IllustrationElement {
   final IconData icon;
+  final Color color;
   final double size;
+  final Offset position;
   final double opacity;
-  final double initialX;
-  final double initialY;
-  final double rotationSpeed;
 
-  FloatingElement({
+  IllustrationElement({
     required this.icon,
+    required this.color,
     required this.size,
+    required this.position,
     required this.opacity,
-    required this.initialX,
-    required this.initialY,
-    required this.rotationSpeed,
   });
-}
-
-// Custom Painter for Liquid Effect
-class LiquidPainter extends CustomPainter {
-  final double animationValue;
-  final List<Color> colors;
-
-  LiquidPainter(this.animationValue, this.colors);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..shader = LinearGradient(
-        colors: colors,
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    final path = Path();
-
-    // Create liquid wave effect
-    final waveHeight = size.height * animationValue;
-    final controlPoint1 = Offset(size.width * 0.3, waveHeight * 0.8);
-    final controlPoint2 = Offset(size.width * 0.7, waveHeight * 1.2);
-
-    path.moveTo(0, size.height);
-    path.lineTo(0, waveHeight);
-    path.cubicTo(
-      controlPoint1.dx,
-      controlPoint1.dy,
-      controlPoint2.dx,
-      controlPoint2.dy,
-      size.width,
-      waveHeight,
-    );
-    path.lineTo(size.width, size.height);
-    path.close();
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

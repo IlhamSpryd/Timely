@@ -31,17 +31,17 @@
   "about": "Tentang",
   "account": "Akun",
   "logout": "Keluar",
-  "cancel": "Batal",
+    "cancel": "Batal",
   "logout_confirm": "Apakah Anda yakin ingin keluar?",
   "version": "Versi 1.0.0",
   "app_version_footer": "Timely v1.0.0 • Build 1001",
   "start": "Mulai Sekarang",
   "skip": "Lewati",
   "greeting": {
-    "morning": "Pagi",
-    "afternoon": "Siang",
-    "evening": "Sore",
-    "night": "Malam"
+    "morning": "Selamat Pagi",
+    "afternoon": "Selamat Siang",
+    "evening": "Selamat Sore",
+    "night": "Selamat Malam"
   },
   "home": {
     "welcome": "Selamat",
@@ -55,7 +55,40 @@
     "swipe_check_in": "Geser untuk Check In",
     "swipe_check_out": "Geser untuk Check Out",
     "release_check_in": "Lepas untuk Check In",
-    "release_check_out": "Lepas untuk Check Out"
+    "release_check_out": "Lepas untuk Check Out",
+    "out_of_ppkd_area": "Di luar Area PPKD",
+    "currently_working": "Sedang Bekerja",
+    "work_complete": "Pekerjaan Selesai",
+    "ready_to_check_in": "Siap Check In",
+    "your_location": "Lokasi Anda",
+    "office_location": "Lokasi Kantor",
+    "update_location": "Perbarui Lokasi",
+    "distance": "Jarak: {distance}m",
+    "out_of_office_area": "Di Luar Area Kantor",
+    "need_to_be_within": "Anda harus berada dalam jarak {radius}m dari kantor untuk check-in/out.",
+    "excellent_work_today": "Kerja bagus hari ini!",
+    "attendance_completed": "Anda telah berhasil menyelesaikan absensi Anda untuk hari ini.",
+    "total": "Total: {duration}",
+    "today_work_session": "Sesi Kerja Hari Ini",
+    "start_time": "Waktu Mulai",
+    "end_time": "Waktu Selesai",
+    "current": "Saat Ini",
+    "duration": "Durasi",
+    "failed_to_load_data": "Gagal memuat data absensi",
+    "not_in_office_area": "Anda tidak berada di area kantor",
+    "authentication_required": "Diperlukan otentikasi",
+    "check_in_successful": "Berhasil check-in pada pukul {time}",
+    "failed_to_check_in": "Gagal check-in",
+    "check_out_successful": "Berhasil check-out pada pukul {time}",
+    "failed_to_check_out": "Gagal check-out",
+    "swipe_to": "Geser untuk",
+    "release_to": "Lepaskan untuk"
+  },
+  "location": {
+    "service_disabled": "Layanan lokasi dinonaktifkan",
+    "permission_denied": "Izin lokasi ditolak",
+    "updated_successfully": "Lokasi berhasil diperbarui",
+    "failed_to_get_location": "Gagal mendapatkan lokasi saat ini"
   },
   "email": "Email",
   "password": "Password",
@@ -77,4 +110,3 @@
   "release_to_check_out": "Lepas untuk Check Out",
   "outside_office_area": "Anda berada di luar area kantor. Silakan mendekat ke lokasi yang telah ditentukan."
 }
-

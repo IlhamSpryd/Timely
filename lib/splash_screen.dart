@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timely/views/auth/login_page.dart';
 import 'package:timely/views/main/main_wrapper.dart';
@@ -13,38 +14,24 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _scaleAnimation;
+  late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    // Setup animation controller
-    _animationController = AnimationController(
+    // Fade animation for text and loader
+    _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
 
-    // Scale animation for logo
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
-      ),
-    );
-
-    // Fade animation for text
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.5, 1.0, curve: Curves.easeInOut),
-      ),
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
     );
 
-    // Start animations
-    _animationController.forward();
+    _fadeController.forward();
 
     // Check user state and navigate accordingly
     _checkUserState();
@@ -53,7 +40,7 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _checkUserState() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Delay for splash screen duration
+    // Delay untuk splash screen
     await Future.delayed(const Duration(milliseconds: 2500));
 
     final bool hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
@@ -61,19 +48,16 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (mounted) {
       if (!hasSeenOnboarding) {
-        // First time user - show onboarding
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const LiquidOnboarding()),
+          MaterialPageRoute(builder: (_) => const Onboarding()),
         );
       } else if (isLoggedIn) {
-        // User is logged in - go to main app
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const MainWrapper()),
         );
       } else {
-        // User has seen onboarding but not logged in - show login
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -84,41 +68,26 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _fadeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.primary,
+      backgroundColor: Colors.white, // Background putih
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Animated Logo
-            ScaleTransition(
-              scale: _scaleAnimation,
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  Icons.access_time_rounded,
-                  size: 60,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+            // Lottie Animation
+            SizedBox(
+              width: 350,
+              height: 350,
+              child: Lottie.asset(
+                'assets/images/splashscreen.json', // ganti path sesuai file Lottie kamu
+                repeat: true,
+                animate: true,
               ),
             ),
             const SizedBox(height: 40),
@@ -129,7 +98,7 @@ class _SplashScreenState extends State<SplashScreen>
               child: Text(
                 "Timely",
                 style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                  color: Colors.white,
+                  color: Colors.black,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -141,7 +110,7 @@ class _SplashScreenState extends State<SplashScreen>
               child: Text(
                 "Professional Attendance",
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.black.withOpacity(0.7),
                 ),
               ),
             ),
@@ -151,9 +120,7 @@ class _SplashScreenState extends State<SplashScreen>
             FadeTransition(
               opacity: _fadeAnimation,
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  Colors.white.withOpacity(0.8),
-                ),
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.black54),
                 strokeWidth: 2,
               ),
             ),

@@ -1,7 +1,6 @@
 import 'dart:convert';
-
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timely/api/auth_api.dart';
 import 'package:timely/models/login_model.dart';
 
 class AuthService {
@@ -9,39 +8,57 @@ class AuthService {
   factory AuthService() => _instance;
   AuthService._internal();
 
-  static const String _baseUrl = "https://appabsensi.mobileprojp.com/api";
+  final AuthApi _authApi = AuthApi();
+
   static const String _keyIsLoggedIn = 'isLoggedIn';
   static const String _keyUserEmail = 'userEmail';
+  static const String _keyUserName = 'userName';
   static const String _keyAuthToken = 'authToken';
   static const String _keyHasSeenOnboarding = 'hasSeenOnboarding';
+  static const String _keyUserData = 'userData';
 
-  // 🔹 LOGIN API
+  // 🔹 LOGIN - Menggunakan AuthApi
   Future<bool> login(String email, String password) async {
-    final url = Uri.parse("$_baseUrl/login");
-    final response = await http.post(
-      url,
-      body: {"email": email, "password": password},
-    );
-
-    if (response.statusCode == 200) {
-      final loginResponse = LoginModel.fromJson(json.decode(response.body));
+    try {
+      final loginResponse = await _authApi.login(email, password);
 
       if (loginResponse.data != null) {
         final token = loginResponse.data!.token ?? "";
         final userEmail = loginResponse.data!.user?.email ?? "";
+        final userName = loginResponse.data!.user?.name ?? "User";
 
-        await saveLogin(userEmail, token);
+        await _saveLoginData(userEmail, token, userName, loginResponse);
         return true;
       }
+      return false;
+    } catch (e) {
+      throw Exception('Login failed: $e');
     }
-    return false;
   }
 
-  // 🔹 Save login data
-  Future<void> saveLogin(String email, String token) async {
+  // 🔹 Save login data dengan lebih lengkap
+  Future<void> _saveLoginData(
+    String email,
+    String token,
+    String name,
+    LoginModel loginResponse,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyIsLoggedIn, true);
     await prefs.setString(_keyUserEmail, email);
+    await prefs.setString(_keyUserName, name);
+    await prefs.setString(_keyAuthToken, token);
+
+    // Simpan data user lengkap sebagai JSON string
+    await prefs.setString(_keyUserData, jsonEncode(loginResponse.toJson()));
+  }
+
+  // 🔹 Save login data (untuk digunakan oleh AuthRepository)
+  Future<void> saveLogin(String email, String token, String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyIsLoggedIn, true);
+    await prefs.setString(_keyUserEmail, email);
+    await prefs.setString(_keyUserName, name);
     await prefs.setString(_keyAuthToken, token);
   }
 
@@ -50,18 +67,13 @@ class AuthService {
     return prefs.getBool(_keyIsLoggedIn) ?? false;
   }
 
-  // 🔹 Logout hanya hapus data login, tidak reset onboarding
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyIsLoggedIn);
     await prefs.remove(_keyUserEmail);
+    await prefs.remove(_keyUserName);
     await prefs.remove(_keyAuthToken);
-  }
-
-  // 🔹 Optional: reset semua data (factory reset app)
-  Future<void> resetAll() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.remove(_keyUserData);
   }
 
   Future<String?> getCurrentUserEmail() async {
@@ -69,9 +81,24 @@ class AuthService {
     return prefs.getString(_keyUserEmail);
   }
 
+  Future<String?> getCurrentUserName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyUserName);
+  }
+
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_keyAuthToken);
+  }
+
+  // 🔹 Get full user data
+  Future<LoginModel?> getFullUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userDataJson = prefs.getString(_keyUserData);
+    if (userDataJson != null) {
+      return LoginModel.fromJson(json.decode(userDataJson));
+    }
+    return null;
   }
 
   Future<bool> hasSeenOnboarding() async {

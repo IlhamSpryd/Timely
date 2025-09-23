@@ -1,50 +1,139 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timely/utils/date_formatter.dart';
+import 'package:timely/api/endpoint.dart';
+import 'package:timely/models/absen_stats.dart';
+import 'package:timely/models/absen_today.dart';
+import 'package:timely/models/checkin_model.dart';
+import 'package:timely/models/checkout_model.dart';
+import 'package:timely/models/getprofile_model.dart';
+import 'package:timely/models/izin_model.dart';
+import 'package:timely/services/auth_services.dart';
 
-class HomePage extends StatefulWidget {
+class ModernHomePage extends StatefulWidget {
   final void Function(String) showSnackBar;
 
-  const HomePage({super.key, void Function(String)? showSnackBar})
-    : showSnackBar = showSnackBar ?? _defaultSnackBar;
-
-  static void _defaultSnackBar(String msg) {}
+  const ModernHomePage({super.key, required this.showSnackBar});
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<ModernHomePage> createState() => _ModernHomePageState();
 }
 
-class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+class _ModernHomePageState extends State<ModernHomePage>
+    with TickerProviderStateMixin {
+  // Method untuk mendapatkan salam personalized berdasarkan waktu
+  String _getPersonalizedGreeting() {
+    final hour = _now.hour;
+    final firstName = _userName.split(' ')[0];
+
+    if (hour >= 5 && hour < 11) {
+      return "Selamat Pagi, $firstName";
+    } else if (hour >= 11 && hour < 15) {
+      return "Selamat Siang, $firstName";
+    } else if (hour >= 15 && hour < 19) {
+      return "Selamat Sore, $firstName";
+    } else if (hour >= 19 && hour < 24) {
+      return "Selamat Malam, $firstName";
+    } else {
+      return "Selamat Beristirahat, $firstName";
+    }
+  }
+
+  // Method untuk mendapatkan emoji berdasarkan waktu
+  String _getGreetingEmoji() {
+    final hour = _now.hour;
+
+    if (hour >= 5 && hour < 11) {
+      return "🌅";
+    } else if (hour >= 11 && hour < 15) {
+      return "☀️";
+    } else if (hour >= 15 && hour < 19) {
+      return "🌇";
+    } else {
+      return "🌙";
+    }
+  }
+
+  // Method untuk mendapatkan deskripsi waktu yang contextual
+  String _getTimeDescription() {
+    final hour = _now.hour;
+
+    if (hour >= 5 && hour < 10) {
+      return "A bright day to start activities!";
+    } else if (hour >= 10 && hour < 14) {
+      return "Productive time!";
+    } else if (hour >= 14 && hour < 17) {
+      return "Keep up the good work in the afternoon!";
+    } else if (hour >= 17 && hour < 21) {
+      return "Have a good rest after work!";
+    } else {
+      return "Don't forget to get enough rest!";
+    }
+  }
+
   late Timer _timer;
   late DateTime _now;
 
   bool _hasCheckedIn = false;
   bool _hasCheckedOut = false;
-  DateTime? _lastCheckDate;
   DateTime? _checkInTime;
   DateTime? _checkOutTime;
+  String _todayStatus = "not yet absent";
+
+  // User data
+  String _userName = "User";
+  String _userEmail = "";
+  String _userInitials = "U";
+  String? _profilePhotoUrl;
+  bool _isLoadingData = false;
+
+  // API Services
+  final AuthService _authService = AuthService();
 
   // Maps
   GoogleMapController? mapController;
   LatLng _currentPosition = LatLng(-6.200000, 106.816666);
   double lat = -6.200000;
   double long = 106.816666;
-  String _currentAddress = "Getting location...";
+  String _currentAddress = "Get location...";
   Marker? _marker;
   bool _isLoadingLocation = false;
 
-  // Enhanced Animation Controllers
-  late final AnimationController _swipeController = AnimationController(
+  // Scroll Controller for SliverAppBar
+  late ScrollController _scrollController;
+
+  // App theme colors
+  static const Color _primaryBlue = Color(0xFF2563EB);
+  static const Color _accentGreen = Color(0xFF10B981);
+  static const Color _accentOrange = Color(0xFFF59E0B);
+  static const Color _accentRed = Color(0xFFEF4444);
+  static const Color _accentPurple = Color(0xFF8B5CF6);
+  static const Color _lightSurface = Color(0xFFFDFDFD);
+  static const Color _lightBackground = Color(0xFFF8FAFC);
+  static const Color _textPrimary = Color(0xFF0F172A);
+  static const Color _textSecondary = Color(0xFF475569);
+
+  // Dark mode colors
+  static const Color _darkBackground = Color(0xFF0F172A);
+  static const Color _darkSurface = Color(0xFF1E293B);
+  static const Color _darkTextPrimary = Color(0xFFF1F5F9);
+  static const Color _darkTextSecondary = Color(0xFF94A3B8);
+
+  // Animation Controllers
+  late final AnimationController _parallaxController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 400),
-  );
+    duration: const Duration(seconds: 20),
+  )..repeat();
 
   late final AnimationController _fadeController = AnimationController(
     vsync: this,
@@ -63,17 +152,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   late final AnimationController _cardController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 600),
+    duration: const Duration(milliseconds: 1000),
   );
 
-  late final AnimationController _breatheController = AnimationController(
+  late final AnimationController _swipeController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 4000),
-  )..repeat(reverse: true);
-
-  late final AnimationController _headerAnimController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1500),
+    duration: const Duration(milliseconds: 400),
   );
 
   // Swipe gesture tracking
@@ -81,12 +165,41 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   bool _isSwipeActive = false;
   String _currentSwipeAction = '';
 
-  // Office location (configurable)
-  final LatLng _officeLocation = LatLng(-6.200000, 106.816666);
-  final double _officeRadius = 100.0; // meters
+  // Office location
+  final LatLng _officeLocation = LatLng(-6.210869244172426, 106.81297234969804);
+  final double _officeRadius = 50.0;
   final String _officeName = "Pusat Pelatihan Kerja Daerah Jakarta Pusat";
   final String _officeAddress =
       "Jl. Bendungan Hilir No. 1, RT.10/RW.2, Kb. Melati, Kec. Tanah Abang, Kota Jakarta Pusat";
+
+  // FITUR : Random Question
+  final List<Map<String, String>> _randomQuestions = [
+    {'question': 'Berapa hasil dari 7 + 5?', 'answer': '12'},
+    {'question': 'Apa ibu kota Indonesia?', 'answer': 'Jakarta'},
+    {'question': 'Warna bendera Indonesia?', 'answer': 'Merah Putih'},
+    {'question': '2 + 2 × 2 = ?', 'answer': '6'},
+    {'question': 'Bulan kemerdekaan Indonesia?', 'answer': 'Agustus'},
+  ];
+  String _currentQuestion = '';
+  String _currentAnswer = '';
+  final TextEditingController _answerController = TextEditingController();
+
+  // FITUR : Daily Quotes
+  final List<String> _dailyQuotes = [
+    "Keberhasilan adalah hasil dari kesempurnaan, kerja keras, belajar dari kegagalan, loyalitas, dan ketekunan.",
+    "Hari ini adalah kesempatan untuk menjadi lebih baik dari kemarin.",
+    "Kerja keras mengalahkan bakat ketika bakat tidak bekerja keras.",
+    "Kesuksesan bukan tentang seberapa besar pencapaianmu, tapi seberapa besar hambatan yang berhasil kamu lewati.",
+    "Mulailah dari mana kamu berada. Gunakan apa yang kamu punya. Lakukan apa yang kamu bisa.",
+  ];
+
+  // FITUR : Alarm Reminder
+  TimeOfDay _reminderTime = TimeOfDay(hour: 8, minute: 0);
+  bool _reminderEnabled = true;
+
+  // FITUR : Absen Stats
+  AbsenStatsModel? _absenStats;
+  bool _isLoadingStats = false;
 
   bool get _isInOfficeArea {
     final distance = Geolocator.distanceBetween(
@@ -98,30 +211,76 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     return distance <= _officeRadius;
   }
 
+  // Parallax background elements
+  final List<ParallaxElement> _parallaxElements = [
+    ParallaxElement(
+      icon: Icons.access_time_rounded,
+      color: _primaryBlue,
+      size: 40,
+      position: Offset(0.1, 0.2),
+      speed: 0.3,
+      opacity: 0.08,
+    ),
+    ParallaxElement(
+      icon: Icons.business_rounded,
+      color: _accentGreen,
+      size: 32,
+      position: Offset(0.85, 0.15),
+      speed: 0.5,
+      opacity: 0.06,
+    ),
+    ParallaxElement(
+      icon: Icons.location_on_rounded,
+      color: _accentOrange,
+      size: 36,
+      position: Offset(0.15, 0.8),
+      speed: 0.4,
+      opacity: 0.07,
+    ),
+    ParallaxElement(
+      icon: Icons.notifications_rounded,
+      color: _accentPurple,
+      size: 28,
+      position: Offset(0.9, 0.85),
+      speed: 0.6,
+      opacity: 0.09,
+    ),
+    ParallaxElement(
+      icon: Icons.check_circle_rounded,
+      color: _accentGreen,
+      size: 34,
+      position: Offset(0.05, 0.5),
+      speed: 0.2,
+      opacity: 0.05,
+    ),
+  ];
+
   @override
   void initState() {
     super.initState();
     _now = DateTime.now();
-    _loadStatus();
+    _scrollController = ScrollController();
     _startAnimations();
+    _loadUserData();
+    _loadAbsenData();
+    _loadAbsenStats();
+    _loadReminderSettings();
 
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         setState(() {
           _now = DateTime.now();
-          _resetDailyStatus();
+          _checkReminder();
         });
       }
     });
 
-    // Auto get location on start
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _getCurrentLocation();
     });
   }
 
   void _startAnimations() {
-    // Staggered animation startup
     _fadeController.forward();
 
     Future.delayed(const Duration(milliseconds: 200), () {
@@ -131,105 +290,660 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     Future.delayed(const Duration(milliseconds: 400), () {
       if (mounted) _cardController.forward();
     });
-
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (mounted) _headerAnimController.forward();
-    });
   }
 
   @override
   void dispose() {
     _timer.cancel();
-    _swipeController.dispose();
+    _scrollController.dispose();
+    _parallaxController.dispose();
     _fadeController.dispose();
     _slideController.dispose();
     _pulseController.dispose();
     _cardController.dispose();
-    _breatheController.dispose();
-    _headerAnimController.dispose();
+    _swipeController.dispose();
     mapController?.dispose();
+    _answerController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadStatus() async {
+  // FITUR : Check Reminder
+  void _checkReminder() {
+    if (_reminderEnabled &&
+        _now.hour == _reminderTime.hour &&
+        _now.minute == _reminderTime.minute &&
+        _now.second == 0) {
+      _showReminderAlert();
+    }
+  }
+
+  // FITUR : Show Reminder Alert
+  void _showReminderAlert() {
+    if (!_hasCheckedIn) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text("Pengingat Absen"),
+          content: Text("Jangan lupa untuk absen masuk!"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text("OK"),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  // FITUR : Load Reminder Settings
+  Future<void> _loadReminderSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final lastCheck = prefs.getString('lastCheckDate');
-    if (lastCheck != null) {
-      _lastCheckDate = DateTime.parse(lastCheck);
-      _hasCheckedIn = prefs.getBool('hasCheckedIn') ?? false;
-      _hasCheckedOut = prefs.getBool('hasCheckedOut') ?? false;
-
-      final checkInString = prefs.getString('checkInTime');
-      if (checkInString != null) {
-        _checkInTime = DateTime.parse(checkInString);
-      }
-
-      final checkOutString = prefs.getString('checkOutTime');
-      if (checkOutString != null) {
-        _checkOutTime = DateTime.parse(checkOutString);
-      }
-    }
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _saveStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (_lastCheckDate != null) {
-      await prefs.setString('lastCheckDate', _lastCheckDate!.toIso8601String());
-    }
-    await prefs.setBool('hasCheckedIn', _hasCheckedIn);
-    await prefs.setBool('hasCheckedOut', _hasCheckedOut);
-
-    if (_checkInTime != null) {
-      await prefs.setString('checkInTime', _checkInTime!.toIso8601String());
-    }
-
-    if (_checkOutTime != null) {
-      await prefs.setString('checkOutTime', _checkOutTime!.toIso8601String());
-    }
-  }
-
-  void _resetDailyStatus() {
-    final today = DateTime(_now.year, _now.month, _now.day);
-    if (_lastCheckDate == null || _lastCheckDate!.isBefore(today)) {
-      _hasCheckedIn = false;
-      _hasCheckedOut = false;
-      _checkInTime = null;
-      _checkOutTime = null;
-      _lastCheckDate = today;
-      _saveStatus();
-    }
-  }
-
-  void _onCheckIn() {
     setState(() {
-      _hasCheckedIn = true;
-      _checkInTime = _now;
-      _lastCheckDate = DateTime(_now.year, _now.month, _now.day);
+      _reminderEnabled = prefs.getBool('reminder_enabled') ?? true;
+      final hour = prefs.getInt('reminder_hour') ?? 8;
+      final minute = prefs.getInt('reminder_minute') ?? 0;
+      _reminderTime = TimeOfDay(hour: hour, minute: minute);
     });
-    _saveStatus();
-    HapticFeedback.mediumImpact();
-    widget.showSnackBar(
-      "Check-in successful at ${DateFormatter.formatTime(_now)}".tr(),
+  }
+
+  // FITUR : Save Reminder Settings
+  Future<void> _saveReminderSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('reminder_enabled', _reminderEnabled);
+    await prefs.setInt('reminder_hour', _reminderTime.hour);
+    await prefs.setInt('reminder_minute', _reminderTime.minute);
+  }
+
+  // FITUR : Show Reminder Settings Dialog
+  void _showReminderSettings() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: _getSurfaceColor(isDarkMode),
+          title: Text("Pengaturan Pengingat"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Checkbox(
+                    value: _reminderEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        _reminderEnabled = value ?? false;
+                      });
+                    },
+                  ),
+                  Text("Aktifkan pengingat"),
+                ],
+              ),
+              SizedBox(height: 10),
+              Text("Waktu pengingat:"),
+              ElevatedButton(
+                onPressed: _reminderEnabled
+                    ? () async {
+                        final TimeOfDay? picked = await showTimePicker(
+                          context: context,
+                          initialTime: _reminderTime,
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _reminderTime = picked;
+                          });
+                        }
+                      }
+                    : null,
+                child: Text(
+                  _reminderTime.format(context),
+                  style: TextStyle(fontSize: 18),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text("Batal"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _saveReminderSettings();
+                Navigator.pop(context);
+                widget.showSnackBar("Pengaturan disimpan");
+              },
+              child: Text("Simpan"),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  void _onCheckOut() {
+  // FITUR : Load Absen Stats
+  Future<void> _loadAbsenStats() async {
     setState(() {
-      _hasCheckedOut = true;
-      _checkOutTime = _now;
-      _lastCheckDate = DateTime(_now.year, _now.month, _now.day);
+      _isLoadingStats = true;
     });
-    _saveStatus();
-    HapticFeedback.mediumImpact();
-    widget.showSnackBar(
-      "Check-out successful at ${DateFormatter.formatTime(_now)}".tr(),
+
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return;
+
+      final response = await http.get(
+        Uri.parse(Endpoint.absenStats),
+        headers: {"Authorization": "Bearer $token"},
+      );
+
+      if (response.statusCode == 200) {
+        final stats = absenStatsModelFromJson(response.body);
+        if (mounted) {
+          setState(() {
+            _absenStats = stats;
+          });
+        }
+      }
+    } catch (e) {
+      print("Error loading absen stats: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingStats = false;
+        });
+      }
+    }
+  }
+
+  // FITUR : Random Question
+  void _showRandomQuestion(String action) {
+    final random = Random();
+    final question = _randomQuestions[random.nextInt(_randomQuestions.length)];
+
+    setState(() {
+      _currentQuestion = question['question']!;
+      _currentAnswer = question['answer']!;
+      _currentSwipeAction = action;
+    });
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return _buildQuestionDialog();
+      },
     );
+  }
+
+  // FITUR : Submit Answer
+  void _submitAnswer() {
+    if (_answerController.text.trim().toLowerCase() ==
+        _currentAnswer.toLowerCase()) {
+      Navigator.of(context).pop();
+
+      if (_currentSwipeAction == 'checkin') {
+        _onCheckIn();
+      } else {
+        _onCheckOut();
+      }
+    } else {
+      widget.showSnackBar("Jawaban salah, coba lagi!");
+      Navigator.of(context).pop();
+      _showRandomQuestion(_currentSwipeAction);
+    }
+  }
+
+  // FITUR : Daily Quote
+  void _showDailyQuote() {
+    final random = Random();
+    final quote = _dailyQuotes[random.nextInt(_dailyQuotes.length)];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Pesan Hari Ini", style: TextStyle(color: _primaryBlue)),
+        content: Text(quote, style: TextStyle(fontSize: 16)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Tutup"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // FITUR : Time Remaining
+  String _getTimeRemaining() {
+    if (_hasCheckedIn && !_hasCheckedOut) {
+      final pulangTime = DateTime(_now.year, _now.month, _now.day, 17, 0);
+      final difference = pulangTime.difference(_now);
+
+      if (difference.inMinutes > 0) {
+        return "${difference.inMinutes} menit lagi pulang";
+      } else {
+        return "Sudah waktunya pulang!";
+      }
+    } else if (!_hasCheckedIn) {
+      final masukTime = DateTime(_now.year, _now.month, _now.day, 8, 0);
+      final difference = masukTime.difference(_now);
+
+      if (difference.inMinutes > 0) {
+        return "${difference.inMinutes} menit lagi masuk";
+      } else {
+        return "Sudah waktunya masuk!";
+      }
+    }
+    return "Absensi selesai";
+  }
+
+  // Helper method to get text colors based on theme
+  Color _getTextPrimary(bool isDarkMode) {
+    return isDarkMode ? _darkTextPrimary : _textPrimary;
+  }
+
+  Color _getTextSecondary(bool isDarkMode) {
+    return isDarkMode ? _darkTextSecondary : _textSecondary;
+  }
+
+  Color _getSurfaceColor(bool isDarkMode) {
+    return isDarkMode ? _darkSurface : _lightSurface;
+  }
+
+  Color _getBackgroundColor(bool isDarkMode) {
+    return isDarkMode ? _darkBackground : _lightBackground;
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final token = await _authService.getToken();
+      final email = await _authService.getCurrentUserEmail();
+      final name = await _authService.getCurrentUserName();
+
+      setState(() {
+        _userName = name ?? "User";
+        _userEmail = email ?? "";
+        _userInitials = _getInitials(_userName);
+      });
+
+      if (token != null) {
+        final response = await http.get(
+          Uri.parse(Endpoint.profile),
+          headers: {"Authorization": "Bearer $token"},
+        );
+
+        if (response.statusCode == 200) {
+          final profileData = getProfileModelFromJson(response.body);
+          if (profileData.data != null && mounted) {
+            setState(() {
+              _userName = profileData.data!.name ?? _userName;
+              _userEmail = profileData.data!.email ?? _userEmail;
+              _userInitials = _getInitials(_userName);
+              _profilePhotoUrl = profileData.data!.profilePhotoUrl;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print("Error loading user data: $e");
+    }
+  }
+
+  String _getInitials(String name) {
+    final names = name.split(' ');
+    if (names.length > 1) {
+      return '${names[0][0]}${names[1][0]}'.toUpperCase();
+    } else if (name.isNotEmpty) {
+      return name[0].toUpperCase();
+    }
+    return "U";
+  }
+
+  Future<void> _loadAbsenData() async {
+    setState(() {
+      _isLoadingData = true;
+    });
+
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return;
+
+      final response = await http.get(
+        Uri.parse(Endpoint.absenToday),
+        headers: {"Authorization": "Bearer $token"},
+      );
+
+      if (response.statusCode == 200) {
+        final todayAbsen = absenTodayModelFromJson(response.body);
+        if (todayAbsen.data != null && mounted) {
+          setState(() {
+            _hasCheckedIn = todayAbsen.data!.checkInTime != null;
+            _hasCheckedOut = todayAbsen.data!.checkOutTime != null;
+            _todayStatus = todayAbsen.data!.status ?? "Belum Absen";
+
+            if (todayAbsen.data!.checkInTime != null) {
+              _checkInTime = _parseTimeString(todayAbsen.data!.checkInTime!);
+            }
+            if (todayAbsen.data!.checkOutTime != null) {
+              _checkOutTime = _parseTimeString(todayAbsen.data!.checkOutTime!);
+            }
+          });
+        }
+      }
+    } catch (e) {
+      print("Error loading absen data: $e");
+      widget.showSnackBar("Gagal memuat data absen");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingData = false;
+        });
+      }
+    }
+  }
+
+  DateTime _parseTimeString(String timeString) {
+    try {
+      final now = DateTime.now();
+      final timeParts = timeString.split(':');
+      if (timeParts.length >= 2) {
+        return DateTime(
+          now.year,
+          now.month,
+          now.day,
+          int.parse(timeParts[0]),
+          int.parse(timeParts[1]),
+        );
+      }
+    } catch (e) {
+      print("Error parsing time: $e");
+    }
+    return DateTime.now();
+  }
+
+  void _onCheckIn() async {
+    if (!_isInOfficeArea) {
+      widget.showSnackBar("Anda tidak berada di area PPKD");
+      return;
+    }
+
+    setState(() {
+      _isLoadingData = true;
+    });
+
+    try {
+      final token = await _authService.getToken();
+      if (token == null) {
+        widget.showSnackBar("Autentikasi diperlukan");
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse(Endpoint.checkIn),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          "check_in_lat": _currentPosition.latitude,
+          "check_in_lng": _currentPosition.longitude,
+          "check_in_address": _currentAddress,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final result = checkinModelFromJson(response.body);
+        if (result.data != null && mounted) {
+          setState(() {
+            _hasCheckedIn = true;
+            _checkInTime = DateTime.now();
+            _todayStatus = "Hadir";
+          });
+
+          HapticFeedback.mediumImpact();
+          widget.showSnackBar("Absen masuk berhasil!");
+          _showDailyQuote();
+          _loadAbsenData();
+        }
+      } else {
+        widget.showSnackBar("Gagal absen masuk");
+      }
+    } catch (e) {
+      print("Error during check-in: $e");
+      widget.showSnackBar("Gagal absen masuk");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingData = false;
+        });
+      }
+    }
+  }
+
+  void _onCheckOut() async {
+    if (!_isInOfficeArea) {
+      widget.showSnackBar("Anda tidak berada di area PPKD");
+      return;
+    }
+
+    setState(() {
+      _isLoadingData = true;
+    });
+
+    try {
+      final token = await _authService.getToken();
+      if (token == null) {
+        widget.showSnackBar("Autentikasi diperlukan");
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse(Endpoint.checkOut),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          "check_out_lat": _currentPosition.latitude,
+          "check_out_lng": _currentPosition.longitude,
+          "check_out_address": _currentAddress,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final result = checkoutModelFromJson(response.body);
+        if (result.data != null && mounted) {
+          setState(() {
+            _hasCheckedOut = true;
+            _checkOutTime = DateTime.now();
+          });
+
+          HapticFeedback.mediumImpact();
+          widget.showSnackBar("Absen pulang berhasil!");
+          _showDailyQuote();
+          _loadAbsenData();
+        }
+      } else {
+        widget.showSnackBar("Gagal absen pulang");
+      }
+    } catch (e) {
+      print("Error during check-out: $e");
+      widget.showSnackBar("Gagal absen pulang");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingData = false;
+        });
+      }
+    }
+  }
+
+  // FITUR : Izin
+  void _showIzinDialog() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final reasonController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: _getSurfaceColor(isDarkMode),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _accentOrange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.assignment_late_rounded,
+                  color: _accentOrange,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "Ajukan Izin",
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: _getTextPrimary(isDarkMode),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Silakan masukkan alasan izin:",
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: _getTextSecondary(isDarkMode),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: "Masukkan alasan izin",
+                  hintStyle: GoogleFonts.inter(
+                    color: _getTextSecondary(isDarkMode),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: isDarkMode
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.grey.withOpacity(0.3),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: _primaryBlue),
+                  ),
+                  filled: true,
+                  fillColor: isDarkMode
+                      ? Colors.white.withOpacity(0.05)
+                      : Colors.grey.withOpacity(0.05),
+                ),
+                style: GoogleFonts.inter(color: _getTextPrimary(isDarkMode)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                "Batal",
+                style: GoogleFonts.inter(
+                  color: _getTextSecondary(isDarkMode),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (reasonController.text.trim().isEmpty) {
+                  widget.showSnackBar("Alasan izin harus diisi");
+                  return;
+                }
+                Navigator.of(context).pop();
+                _performIzin(reasonController.text.trim());
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _accentOrange,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                "Submit",
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // FITUR : Perform Izin
+  Future<void> _performIzin(String alasan) async {
+    setState(() {
+      _isLoadingData = true;
+    });
+
+    try {
+      final token = await _authService.getToken();
+      if (token == null) {
+        widget.showSnackBar("Autentikasi diperlukan");
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse(Endpoint.izin),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({"alasan_izin": alasan}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final result = izinModelFromJson(response.body);
+        widget.showSnackBar("Izin berhasil diajukan");
+        _loadAbsenData();
+      } else {
+        widget.showSnackBar("Gagal mengajukan izin");
+      }
+    } catch (e) {
+      print("Error during izin: $e");
+      widget.showSnackBar("Gagal mengajukan izin");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingData = false;
+        });
+      }
+    }
   }
 
   void _onSwipeUpdate(DragUpdateDetails details, String action) {
-    final containerWidth =
-        MediaQuery.of(context).size.width - 48 - 64; // margin + button width
+    final containerWidth = MediaQuery.of(context).size.width - 48 - 64;
     setState(() {
       _swipeProgress = (details.localPosition.dx / containerWidth).clamp(
         0.0,
@@ -247,11 +961,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   void _onSwipeEnd(String action) {
     if (_swipeProgress > 0.8) {
       _swipeController.forward().then((_) {
-        if (action == 'checkin') {
-          _onCheckIn();
-        } else if (action == 'checkout') {
-          _onCheckOut();
-        }
+        _showRandomQuestion(action);
         _swipeController.reset();
       });
     } else {
@@ -267,984 +977,69 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     });
   }
 
-  Widget _buildProfessionalHeader() {
+  // UPDATE: Tambahkan method untuk Question Dialog
+  Widget _buildQuestionDialog() {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return AnimatedBuilder(
-      animation: Listenable.merge([_breatheController, _headerAnimController]),
-      builder: (context, child) {
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: isDarkMode
-                  ? [
-                      const Color(0xFF0B1426),
-                      const Color(0xFF1E293B),
-                      const Color(0xFF334155).withOpacity(0.8),
-                    ]
-                  : [
-                      const Color(0xFF4F46E5),
-                      const Color(0xFF7C3AED),
-                      const Color(0xFF06B6D4),
-                    ],
-              stops: [0.0, 0.6 + (_breatheController.value * 0.2), 1.0],
+    return AlertDialog(
+      backgroundColor: _getSurfaceColor(isDarkMode),
+      title: Text("Verifikasi Anti-Bot"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _currentQuestion,
+            style: TextStyle(fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 15),
+          TextField(
+            controller: _answerController,
+            decoration: InputDecoration(
+              labelText: "Jawaban",
+              border: OutlineInputBorder(),
             ),
           ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
-              child: SlideTransition(
-                position:
-                    Tween<Offset>(
-                      begin: const Offset(0, -0.5),
-                      end: Offset.zero,
-                    ).animate(
-                      CurvedAnimation(
-                        parent: _headerAnimController,
-                        curve: Curves.easeOutBack,
-                      ),
-                    ),
-                child: Column(
-                  children: [
-                    // Top Navigation Bar
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Good ${_getGreeting()}".tr(),
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.85),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              "Ilham Sepriyadi",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 26,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.8,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Notification & Profile Section
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.25),
-                                  width: 0.5,
-                                ),
-                              ),
-                              child: Icon(
-                                Icons.notifications_none,
-                                color: Colors.white.withOpacity(0.9),
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.25),
-                                  width: 0.5,
-                                ),
-                              ),
-                              child: CircleAvatar(
-                                radius: 16,
-                                backgroundColor: Colors.white.withOpacity(0.9),
-                                child: Text(
-                                  "IS",
-                                  style: TextStyle(
-                                    color: const Color(0xFF4F46E5),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 48),
-
-                    // Modern Time Display
-                    ScaleTransition(
-                      scale: Tween<double>(begin: 0.8, end: 1.0).animate(
-                        CurvedAnimation(
-                          parent: _headerAnimController,
-                          curve: const Interval(
-                            0.3,
-                            1.0,
-                            curve: Curves.elasticOut,
-                          ),
-                        ),
-                      ),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 24,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.25),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
-                              blurRadius: 24,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            AnimatedBuilder(
-                              animation: _pulseController,
-                              builder: (context, child) {
-                                return Transform.scale(
-                                  scale: 1.0 + (_pulseController.value * 0.02),
-                                  child: Text(
-                                    DateFormatter.formatTime(_now),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 48,
-                                      fontWeight: FontWeight.w200,
-                                      letterSpacing: -2.5,
-                                      height: 1.0,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              DateFormatter.formatFullDate(_now),
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.85),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-
-                            // Work Status Indicator
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _getStatusColor().withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: _getStatusColor().withOpacity(0.3),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Text(
-                                _getWorkStatus(),
-                                style: TextStyle(
-                                  color: _getStatusColor(),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Color _getStatusColor() {
-    if (!_isInOfficeArea) return const Color(0xFFEF4444);
-    if (_hasCheckedIn && !_hasCheckedOut) return const Color(0xFF10B981);
-    if (_hasCheckedIn && _hasCheckedOut) return const Color(0xFF6366F1);
-    return const Color(0xFFF59E0B);
-  }
-
-  String _getWorkStatus() {
-    if (!_isInOfficeArea) return "Out of PPKD Area".tr();
-    if (_hasCheckedIn && !_hasCheckedOut) return "Currently Working".tr();
-    if (_hasCheckedIn && _hasCheckedOut) return "Work Complete".tr();
-    return "Ready to Check In".tr();
-  }
-
-  Widget _buildLocationCard() {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final theme = Theme.of(context);
-
-    return SlideTransition(
-      position: Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
-          .animate(
-            CurvedAnimation(
-              parent: _cardController,
-              curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
-            ),
-          ),
-      child: FadeTransition(
-        opacity: CurvedAnimation(
-          parent: _cardController,
-          curve: const Interval(0.2, 1.0),
-        ),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 24),
-          decoration: BoxDecoration(
-            color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: isDarkMode
-                    ? Colors.black.withOpacity(0.4)
-                    : Colors.black.withOpacity(0.08),
-                blurRadius: 28,
-                offset: const Offset(0, 12),
-              ),
-            ],
-            border: Border.all(
-              color: isDarkMode
-                  ? Colors.white.withOpacity(0.08)
-                  : Colors.grey.withOpacity(0.08),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            children: [
-              // Map Section
-              Container(
-                height: 200,
-                decoration: const BoxDecoration(
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                ),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                  child: Stack(
-                    children: [
-                      GoogleMap(
-                        initialCameraPosition: CameraPosition(
-                          target: _currentPosition,
-                          zoom: 16,
-                        ),
-                        myLocationEnabled: true,
-                        myLocationButtonEnabled: false,
-                        mapType: MapType.normal,
-                        zoomControlsEnabled: false,
-                        markers: _buildMapMarkers(),
-                        circles: {
-                          Circle(
-                            circleId: const CircleId('office_area'),
-                            center: _officeLocation,
-                            radius: _officeRadius,
-                            fillColor: const Color(0xFF4F46E5).withOpacity(0.1),
-                            strokeColor: const Color(
-                              0xFF4F46E5,
-                            ).withOpacity(0.5),
-                            strokeWidth: 2,
-                          ),
-                        },
-                        onMapCreated: (controller) {
-                          mapController = controller;
-                          if (isDarkMode) {
-                            controller.setMapStyle(_darkMapStyle);
-                          }
-                        },
-                      ),
-
-                      // Distance indicator overlay
-                      Positioned(
-                        top: 16,
-                        right: 16,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _isInOfficeArea
-                                    ? Icons.check_circle
-                                    : Icons.location_on,
-                                size: 16,
-                                color: _isInOfficeArea
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFFEF4444),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                "${_getDistanceToOffice().toStringAsFixed(0)}m",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _isInOfficeArea
-                                      ? const Color(0xFF10B981)
-                                      : const Color(0xFFEF4444),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Location Details
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    // Current location info
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF4F46E5).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(
-                            Icons.my_location,
-                            color: const Color(0xFF4F46E5),
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Your Location".tr(),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                _currentAddress,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: theme.colorScheme.onSurface,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.3,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Office location info
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(
-                            Icons.business,
-                            color: const Color(0xFF10B981),
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Office Location".tr(),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                _officeName,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: theme.colorScheme.onSurface,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.3,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Update location button
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isLoadingLocation
-                            ? null
-                            : _getCurrentLocation,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4F46E5),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: _isLoadingLocation
-                            ? SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.refresh_rounded, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    "Update Location".tr(),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: Text("Batal"),
+        ),
+        ElevatedButton(onPressed: _submitAnswer, child: Text("Submit")),
+      ],
     );
   }
 
-  Set<Marker> _buildMapMarkers() {
-    final markers = <Marker>{};
+  // UPDATE: Tambahkan stats card
+  Widget _buildStatsCard() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    // Current position marker
-    if (_marker != null) {
-      markers.add(_marker!);
+    if (_isLoadingStats) {
+      return Center(child: CircularProgressIndicator());
     }
 
-    // Office marker
-    markers.add(
-      Marker(
-        markerId: const MarkerId('office'),
-        position: _officeLocation,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        infoWindow: InfoWindow(
-          title: 'Office Location'.tr(),
-          snippet: _officeName,
-        ),
-      ),
-    );
-
-    return markers;
-  }
-
-  double _getDistanceToOffice() {
-    return Geolocator.distanceBetween(
-      _currentPosition.latitude,
-      _currentPosition.longitude,
-      _officeLocation.latitude,
-      _officeLocation.longitude,
-    );
-  }
-
-  Widget _buildStatusCards() {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        children: [
-          Expanded(
-            child: SlideTransition(
-              position:
-                  Tween<Offset>(
-                    begin: const Offset(-0.5, 0),
-                    end: Offset.zero,
-                  ).animate(
-                    CurvedAnimation(
-                      parent: _cardController,
-                      curve: const Interval(
-                        0.3,
-                        1.0,
-                        curve: Curves.easeOutCubic,
-                      ),
-                    ),
-                  ),
-              child: _buildStatusCard(
-                title: "Check In".tr(),
-                time: _checkInTime,
-                icon: Icons.login_rounded,
-                color: const Color(0xFF10B981),
-                isCompleted: _hasCheckedIn,
-                isDarkMode: isDarkMode,
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 16),
-
-          Expanded(
-            child: SlideTransition(
-              position:
-                  Tween<Offset>(
-                    begin: const Offset(0.5, 0),
-                    end: Offset.zero,
-                  ).animate(
-                    CurvedAnimation(
-                      parent: _cardController,
-                      curve: const Interval(
-                        0.4,
-                        1.0,
-                        curve: Curves.easeOutCubic,
-                      ),
-                    ),
-                  ),
-              child: _buildStatusCard(
-                title: "Check Out".tr(),
-                time: _checkOutTime,
-                icon: Icons.logout_rounded,
-                color: const Color(0xFFEF4444),
-                isCompleted: _hasCheckedOut,
-                isDarkMode: isDarkMode,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusCard({
-    required String title,
-    required DateTime? time,
-    required IconData icon,
-    required Color color,
-    required bool isCompleted,
-    required bool isDarkMode,
-  }) {
-    final theme = Theme.of(context);
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeInOut,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isCompleted
-            ? color.withOpacity(0.08)
-            : (isDarkMode ? const Color(0xFF1E293B) : Colors.white),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isCompleted
-              ? color.withOpacity(0.25)
-              : (isDarkMode
-                    ? Colors.white.withOpacity(0.08)
-                    : Colors.grey.withOpacity(0.08)),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: isCompleted
-                ? color.withOpacity(0.12)
-                : Colors.black.withOpacity(isDarkMode ? 0.25 : 0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isCompleted ? color : color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              isCompleted ? Icons.check_circle_rounded : icon,
-              color: isCompleted ? Colors.white : color,
-              size: 28,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            title,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-              color: isCompleted ? color : theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            time != null ? DateFormatter.formatTime(time) : "--:--",
-            style: TextStyle(
-              fontSize: 15,
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfessionalSwipeButton({
-    required String label,
-    required IconData icon,
-    required bool isEnabled,
-    required String action,
-    required Color color,
-  }) {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-    final isCurrentSwipe = _currentSwipeAction == action;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      height: 72,
-      decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(36),
-        border: Border.all(
-          color: isEnabled
-              ? color.withOpacity(0.15)
-              : (isDarkMode
-                    ? Colors.white.withOpacity(0.08)
-                    : Colors.grey.withOpacity(0.08)),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDarkMode ? 0.25 : 0.06),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          // Progress background with gradient
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            height: 72,
-            width: isCurrentSwipe
-                ? _swipeProgress * (MediaQuery.of(context).size.width - 48)
-                : 0,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  color.withOpacity(0.1),
-                  color.withOpacity(0.2),
-                  color.withOpacity(0.15),
-                ],
-                stops: const [0.0, 0.7, 1.0],
-              ),
-              borderRadius: BorderRadius.circular(36),
-            ),
-          ),
-
-          // Swipe button with enhanced design
-          AnimatedPositioned(
-            duration: Duration(milliseconds: isCurrentSwipe ? 0 : 500),
-            curve: Curves.easeOutCubic,
-            left: isCurrentSwipe
-                ? _swipeProgress *
-                          (MediaQuery.of(context).size.width - 48 - 68) +
-                      4
-                : 4,
-            top: 4,
-            child: GestureDetector(
-              onPanUpdate: isEnabled && _isInOfficeArea
-                  ? (details) => _onSwipeUpdate(details, action)
-                  : null,
-              onPanEnd: isEnabled && _isInOfficeArea
-                  ? (_) => _onSwipeEnd(action)
-                  : null,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  gradient: isEnabled && _isInOfficeArea
-                      ? LinearGradient(
-                          colors: [color, color.withOpacity(0.8)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                      : LinearGradient(
-                          colors: [
-                            theme.colorScheme.onSurfaceVariant.withOpacity(0.2),
-                            theme.colorScheme.onSurfaceVariant.withOpacity(0.1),
-                          ],
-                        ),
-                  borderRadius: BorderRadius.circular(32),
-                  boxShadow: isEnabled && _isInOfficeArea
-                      ? [
-                          BoxShadow(
-                            color: color.withOpacity(0.4),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
-                          ),
-                        ]
-                      : [],
-                ),
-                child: Icon(
-                  icon,
-                  color: isEnabled && _isInOfficeArea
-                      ? Colors.white
-                      : Colors.grey,
-                  size: 28,
-                ),
-              ),
-            ),
-          ),
-
-          // Label with better positioning
-          Positioned.fill(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 80),
-                child: Text(
-                  isCurrentSwipe && _swipeProgress > 0.7
-                      ? "Release to $label".tr()
-                      : "Swipe to $label".tr(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 17,
-                    color: isEnabled && _isInOfficeArea
-                        ? theme.colorScheme.onSurface
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          ),
-
-          // Enhanced animated indicators
-          if (isEnabled && _isInOfficeArea) ...[
-            Positioned(
-              right: 90,
-              top: 0,
-              bottom: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(4, (index) {
-                  return AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, child) {
-                      final delay = index * 0.15;
-                      final progress = (_pulseController.value + delay) % 1.0;
-
-                      return Container(
-                        margin: const EdgeInsets.only(right: 4),
-                        width: 3 + (progress * 3),
-                        height: 3 + (progress * 3),
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.4 + (progress * 0.4)),
-                          shape: BoxShape.circle,
-                        ),
-                      );
-                    },
-                  );
-                }),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOutOfOfficeAlert() {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFEF4444).withOpacity(0.08),
-            const Color(0xFFDC2626).withOpacity(0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.15)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFEF4444).withOpacity(0.1),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEF4444).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              Icons.location_off_rounded,
-              color: const Color(0xFFEF4444),
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Out of Office Area".tr(),
-                  style: TextStyle(
-                    color: const Color(0xFFEF4444),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  "You need to be within ${_officeRadius.toInt()}m of the office to check in/out."
-                      .tr(),
-                  style: TextStyle(
-                    color: const Color(0xFFEF4444).withOpacity(0.8),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "Distance: ${_getDistanceToOffice().toStringAsFixed(0)}m"
-                      .tr(),
-                  style: TextStyle(
-                    color: const Color(0xFFEF4444),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWorkSummaryCard() {
-    if (!_hasCheckedIn || _checkInTime == null) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-
     return SlideTransition(
-      position: Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
+      position: Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero)
           .animate(
             CurvedAnimation(
               parent: _cardController,
-              curve: const Interval(0.5, 1.0, curve: Curves.easeOutCubic),
+              curve: const Interval(0.6, 1.0, curve: Curves.easeOutCubic),
             ),
           ),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 24),
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isDarkMode
-                ? Colors.white.withOpacity(0.08)
-                : Colors.grey.withOpacity(0.08),
-          ),
+          color: _getSurfaceColor(isDarkMode),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDarkMode ? 0.25 : 0.06),
-              blurRadius: 24,
+              color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.06),
+              blurRadius: 20,
               offset: const Offset(0, 8),
             ),
           ],
@@ -1253,76 +1048,489 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    Icons.schedule_rounded,
-                    color: const Color(0xFF8B5CF6),
-                    size: 24,
+                Icon(Icons.bar_chart_rounded, color: _accentPurple),
+                SizedBox(width: 10),
+                Text(
+                  "Statistik Absen",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            SizedBox(height: 15),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStatItem(
+                  "Total",
+                  _absenStats?.data?.totalAbsen?.toString() ?? "0",
+                  _primaryBlue,
+                ),
+                _buildStatItem(
+                  "Masuk",
+                  _absenStats?.data?.totalMasuk?.toString() ?? "0",
+                  _accentGreen,
+                ),
+                _buildStatItem(
+                  "Izin",
+                  _absenStats?.data?.totalIzin?.toString() ?? "0",
+                  _accentOrange,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(label, style: TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+
+  // UPDATE: Tambahkan time remaining indicator
+  Widget _buildTimeRemainingIndicator() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _primaryBlue.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _primaryBlue.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.access_time_rounded, color: _primaryBlue),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _getTimeRemaining(),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: _primaryBlue,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Method untuk parallax background
+  Widget _buildParallaxBackground() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return AnimatedBuilder(
+      animation: _parallaxController,
+      builder: (context, child) {
+        return CustomPaint(
+          size: Size.infinite,
+          painter: _ParallaxBackgroundPainter(
+            elements: _parallaxElements,
+            animationValue: _parallaxController.value,
+            isDarkMode: isDarkMode,
+          ),
+        );
+      },
+    );
+  }
+
+  // Method untuk expanded header
+  // Method untuk expanded header (VERSI UPDATED)
+  Widget _buildExpandedHeader() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      width: double.infinity,
+      height: 320,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDarkMode
+              ? [_darkBackground, _darkSurface]
+              : [_primaryBlue, Color(0xFF1D4ED8)],
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Background pattern atau efek tambahan (optional)
+          Positioned(
+            top: 50,
+            right: 20,
+            child: Opacity(
+              opacity: 0.1,
+              child: Text(_getGreetingEmoji(), style: TextStyle(fontSize: 100)),
+            ),
+          ),
+
+          // User info section
+          Positioned(
+            top: 80,
+            left: 24,
+            right: 24,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Greeting dengan emoji
+                Row(
+                  children: [
+                    Text(_getGreetingEmoji(), style: TextStyle(fontSize: 24)),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _getPersonalizedGreeting(),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                SizedBox(height: 8),
+
+                // Time description
+                Text(
+                  _getTimeDescription(),
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 14,
+                    fontStyle: FontStyle.italic,
+                    height: 1.4,
                   ),
                 ),
-                const SizedBox(width: 16),
-                Text(
-                  "Today's Work Session".tr(),
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.onSurface,
+
+                SizedBox(height: 16),
+
+                // Date information
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    DateFormat('EEEE, d MMMM y', 'id_ID').format(_now),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ],
             ),
+          ),
 
-            const SizedBox(height: 24),
+          // Big time display
+          Positioned(
+            bottom: 60,
+            left: 24,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  DateFormat('HH:mm').format(_now),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 52,
+                    fontWeight: FontWeight.w300,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  '${DateFormat('ss').format(_now)} detik',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
 
+          // Status indicator (optional)
+          Positioned(
+            bottom: 30,
+            right: 24,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _hasCheckedIn
+                    ? (_hasCheckedOut ? Colors.green : Colors.orange)
+                    : Colors.blue,
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Text(
+                _hasCheckedIn
+                    ? (_hasCheckedOut ? "Selesai" : "Sedang Bekerja")
+                    : "Belum Absen",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Method untuk collapsed app bar
+  // Method untuk collapsed app bar (VERSI UPDATED)
+  Widget _buildCollapsedAppBar() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      height: kToolbarHeight,
+      padding: EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDarkMode
+              ? [_darkBackground, _darkSurface]
+              : [_primaryBlue, Color(0xFF1D4ED8)],
+        ),
+      ),
+      child: Row(
+        children: [
+          // User avatar
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.white,
+            child: Text(
+              _userInitials,
+              style: TextStyle(
+                color: _primaryBlue,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+
+          SizedBox(width: 12),
+
+          // Greeting and user info
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Greeting line
+                RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '${_getGreetingEmoji()} ',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      TextSpan(
+                        text: _getPersonalizedGreeting().split(
+                          ',',
+                        )[0], // Hanya "Selamat Pagi"
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: 2),
+
+                // User name
+                Text(
+                  _userName.length > 15
+                      ? '${_userName.substring(0, 15)}...'
+                      : _userName,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Current time
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                DateFormat('HH:mm').format(_now),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                DateFormat('ss').format(_now),
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Method untuk location card
+  Widget _buildLocationCard() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return SlideTransition(
+      position: Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero)
+          .animate(
+            CurvedAnimation(
+              parent: _cardController,
+              curve: const Interval(0.4, 0.8, curve: Curves.easeOutCubic),
+            ),
+          ),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: _getSurfaceColor(isDarkMode),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.06),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
               children: [
-                Expanded(
-                  child: _buildWorkTimeItem(
-                    "Start Time".tr(),
-                    DateFormatter.formatTime(_checkInTime!),
-                    Icons.login_rounded,
-                    const Color(0xFF10B981),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _primaryBlue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.location_on_rounded,
+                    color: _primaryBlue,
+                    size: 24,
                   ),
                 ),
-
-                Container(
-                  width: 1,
-                  height: 50,
-                  color: theme.colorScheme.onSurfaceVariant.withOpacity(0.15),
-                ),
-
+                const SizedBox(width: 12),
                 Expanded(
-                  child: _buildWorkTimeItem(
-                    _hasCheckedOut ? "End Time".tr() : "Current".tr(),
-                    _hasCheckedOut && _checkOutTime != null
-                        ? DateFormatter.formatTime(_checkOutTime!)
-                        : DateFormatter.formatTime(_now),
-                    _hasCheckedOut
-                        ? Icons.logout_rounded
-                        : Icons.access_time_rounded,
-                    _hasCheckedOut
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF4F46E5),
+                  child: Text(
+                    "Lokasi Saat Ini",
+                    style: GoogleFonts.inter(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: _getTextPrimary(isDarkMode),
+                    ),
                   ),
                 ),
-
-                Container(
-                  width: 1,
-                  height: 50,
-                  color: theme.colorScheme.onSurfaceVariant.withOpacity(0.15),
+                if (_isLoadingLocation)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  IconButton(
+                    onPressed: _getCurrentLocation,
+                    icon: Icon(Icons.refresh_rounded, size: 20),
+                    color: _getTextSecondary(isDarkMode),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _currentAddress,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: _getTextSecondary(isDarkMode),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              height: 120,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isDarkMode
+                      ? Colors.white.withOpacity(0.1)
+                      : Colors.grey.withOpacity(0.3),
                 ),
-
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: GoogleMap(
+                  onMapCreated: (GoogleMapController controller) {
+                    mapController = controller;
+                    if (isDarkMode) {
+                      controller.setMapStyle(_darkMapStyle);
+                    }
+                  },
+                  initialCameraPosition: CameraPosition(
+                    target: _currentPosition,
+                    zoom: 15,
+                  ),
+                  markers: _marker != null ? {_marker!} : {},
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  _isInOfficeArea ? Icons.check_circle : Icons.error,
+                  color: _isInOfficeArea ? _accentGreen : _accentOrange,
+                  size: 16,
+                ),
+                const SizedBox(width: 6),
                 Expanded(
-                  child: _buildWorkTimeItem(
-                    "Duration".tr(),
-                    _calculateWorkDuration(),
-                    Icons.timer_rounded,
-                    const Color(0xFF8B5CF6),
+                  child: Text(
+                    _isInOfficeArea
+                        ? "Anda berada di area PPKD"
+                        : "Anda di luar area PPKD",
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: _isInOfficeArea ? _accentGreen : _accentOrange,
+                    ),
                   ),
                 ),
               ],
@@ -1333,233 +1541,424 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildWorkTimeItem(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    final theme = Theme.of(context);
+  // Method untuk status cards
+  Widget _buildStatusCards() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return Column(
+    return Row(
       children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
+        Expanded(
+          child: _buildStatusCard(
+            title: "Status Hari Ini",
+            value: _todayStatus,
+            icon: Icons.calendar_today_rounded,
+            color: _primaryBlue,
           ),
-          child: Icon(icon, color: color, size: 20),
         ),
-        const SizedBox(height: 12),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: theme.colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w500,
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatusCard(
+            title: "Absen Masuk",
+            value: _hasCheckedIn
+                ? DateFormat('HH:mm').format(_checkInTime!)
+                : "--:--",
+            icon: Icons.login_rounded,
+            color: _accentGreen,
           ),
-          textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            color: theme.colorScheme.onSurface,
-            fontWeight: FontWeight.w700,
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatusCard(
+            title: "Absen Pulang",
+            value: _hasCheckedOut
+                ? DateFormat('HH:mm').format(_checkOutTime!)
+                : "--:--",
+            icon: Icons.logout_rounded,
+            color: _accentRed,
           ),
-          textAlign: TextAlign.center,
         ),
       ],
     );
   }
 
+  Widget _buildStatusCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return SlideTransition(
+      position: Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero)
+          .animate(
+            CurvedAnimation(
+              parent: _cardController,
+              curve: const Interval(0.2, 0.6, curve: Curves.easeOutCubic),
+            ),
+          ),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: _getSurfaceColor(isDarkMode),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: _getTextSecondary(isDarkMode),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: _getTextPrimary(isDarkMode),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Method untuk completion card
   Widget _buildCompletionCard() {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
-      padding: const EdgeInsets.all(28),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF10B981).withOpacity(0.08),
-            const Color(0xFF059669).withOpacity(0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.15)),
+        color: _getSurfaceColor(isDarkMode),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF10B981).withOpacity(0.1),
-            blurRadius: 24,
+            color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.06),
+            blurRadius: 20,
             offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFF10B981),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Icon(
-              Icons.check_circle_rounded,
-              color: Colors.white,
-              size: 40,
-            ),
-          ),
-          const SizedBox(height: 20),
+          Icon(Icons.check_circle_rounded, color: _accentGreen, size: 48),
+          const SizedBox(height: 10),
           Text(
-            "Excellent Work Today!".tr(),
+            "Absensi Selesai",
             style: TextStyle(
-              color: const Color(0xFF10B981),
-              fontWeight: FontWeight.w700,
-              fontSize: 22,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: _getTextPrimary(isDarkMode),
             ),
-            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
           Text(
-            "You've successfully completed your attendance for today.".tr(),
-            style: TextStyle(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              height: 1.4,
-            ),
-            textAlign: TextAlign.center,
+            "Terima kasih telah bekerja hari ini!",
+            style: TextStyle(color: _getTextSecondary(isDarkMode)),
           ),
-          const SizedBox(height: 16),
-          if (_checkInTime != null && _checkOutTime != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                "Total: ${_calculateWorkDuration()}".tr(),
-                style: TextStyle(
-                  color: const Color(0xFF10B981),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 
-  String _getGreeting() {
-    final hour = _now.hour;
-    if (hour < 12) return "Morning";
-    if (hour < 15) return "Afternoon";
-    if (hour < 18) return "Evening";
-    return "Night";
+  // Method untuk out of office alert
+  Widget _buildOutOfOfficeAlert() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _accentOrange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _accentOrange.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.location_off_rounded, color: _accentOrange, size: 48),
+          const SizedBox(height: 10),
+          Text(
+            "Di Luar Area PPKD",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: _accentOrange,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            "Anda harus berada di area PPKD untuk melakukan absen",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _getTextSecondary(isDarkMode)),
+          ),
+        ],
+      ),
+    );
   }
 
-  String _calculateWorkDuration() {
-    if (_checkInTime == null) return "0h 0m";
+  // Method untuk swipe button
+  Widget _buildCleanSwipeButton({
+    required String label,
+    required IconData icon,
+    required bool isEnabled,
+    required String action,
+    required Color color,
+  }) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    final endTime = _hasCheckedOut && _checkOutTime != null
-        ? _checkOutTime!
-        : _now;
-    final duration = endTime.difference(_checkInTime!);
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) => _onSwipeUpdate(details, action),
+      onHorizontalDragEnd: (_) => _onSwipeEnd(action),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        height: 80,
+        decoration: BoxDecoration(
+          color: _getSurfaceColor(isDarkMode),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.06),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            // Progress indicator
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width:
+                  (MediaQuery.of(context).size.width - 48 - 64) *
+                  _swipeProgress,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
 
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes.remainder(60);
+            // Content
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  Icon(icon, color: color, size: 28),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      label == "check_in"
+                          ? "Geser untuk Absen Masuk"
+                          : "Geser untuk Absen Pulang",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: _getTextPrimary(isDarkMode),
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.arrow_forward_rounded, color: color),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-    return "${hours}h ${minutes}m";
+  // Method untuk work summary card
+  Widget _buildWorkSummaryCard() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _getSurfaceColor(isDarkMode),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDarkMode ? 0.2 : 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Ringkasan Kerja",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 10),
+          // Tambahkan konten ringkasan kerja di sini
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDarkMode
-          ? const Color(0xFF0B1426)
-          : const Color(0xFFF8FAFC),
-      body: FadeTransition(
-        opacity: _fadeController,
-        child: SlideTransition(
-          position:
-              Tween<Offset>(
-                begin: const Offset(0, 0.05),
-                end: Offset.zero,
-              ).animate(
-                CurvedAnimation(
-                  parent: _slideController,
-                  curve: Curves.easeOutCubic,
+      backgroundColor: _getBackgroundColor(isDarkMode),
+      body: Stack(
+        children: [
+          _buildParallaxBackground(),
+
+          FadeTransition(
+            opacity: _fadeController,
+            child: CustomScrollView(
+              controller: _scrollController,
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                SliverAppBar(
+                  expandedHeight: 300.0,
+                  floating: false,
+                  pinned: true,
+                  stretch: true,
+                  backgroundColor: isDarkMode ? _darkBackground : _primaryBlue,
+                  elevation: 0,
+                  leading: const SizedBox.shrink(),
+                  leadingWidth: 0,
+                  flexibleSpace: LayoutBuilder(
+                    builder:
+                        (BuildContext context, BoxConstraints constraints) {
+                          final double collapseProgress =
+                              ((constraints.maxHeight - kToolbarHeight) /
+                                      (320.0 - kToolbarHeight))
+                                  .clamp(0.0, 1.0);
+
+                          return FlexibleSpaceBar(
+                            stretchModes: const [
+                              StretchMode.zoomBackground,
+                              StretchMode.blurBackground,
+                            ],
+                            background: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: collapseProgress > 0.3
+                                  ? _buildExpandedHeader()
+                                  : _buildCollapsedAppBar(),
+                            ),
+                            titlePadding: EdgeInsets.zero,
+                            title: AnimatedOpacity(
+                              opacity: collapseProgress < 0.3 ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 200),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: _buildCollapsedAppBar(),
+                              ),
+                            ),
+                          );
+                        },
+                  ),
+                  actions: [
+                    IconButton(
+                      icon: Icon(Icons.alarm_add_rounded),
+                      onPressed: _showReminderSettings,
+                      color: Colors.white,
+                    ),
+                  ],
                 ),
-              ),
-          child: Column(
-            children: [
-              // Professional Header
-              _buildProfessionalHeader(),
 
-              // Scrollable Content
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 32),
-
-                      // Location Card
-                      _buildLocationCard(),
-
-                      const SizedBox(height: 32),
-
-                      // Status Cards
-                      _buildStatusCards(),
-
-                      const SizedBox(height: 40),
-
-                      // Action Section
-                      if (_hasCheckedIn && _hasCheckedOut) ...[
-                        _buildCompletionCard(),
-                      ] else if (!_isInOfficeArea) ...[
-                        _buildOutOfOfficeAlert(),
-                      ] else if (!_hasCheckedIn) ...[
-                        _buildProfessionalSwipeButton(
-                          label: "Check In",
-                          icon: Icons.login_rounded,
-                          isEnabled: !_hasCheckedIn,
-                          action: "checkin",
-                          color: const Color(0xFF10B981),
+                SliverToBoxAdapter(
+                  child: SlideTransition(
+                    position:
+                        Tween<Offset>(
+                          begin: const Offset(0, 0.02),
+                          end: Offset.zero,
+                        ).animate(
+                          CurvedAnimation(
+                            parent: _slideController,
+                            curve: Curves.easeOutCubic,
+                          ),
                         ),
-                      ] else if (!_hasCheckedOut) ...[
-                        _buildProfessionalSwipeButton(
-                          label: "Check Out",
-                          icon: Icons.logout_rounded,
-                          isEnabled: !_hasCheckedOut,
-                          action: "checkout",
-                          color: const Color(0xFFEF4444),
-                        ),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 24),
+
+                        // FITUR : Time Remaining Indicator
+                        _buildTimeRemainingIndicator(),
+
+                        const SizedBox(height: 16),
+
+                        // Location Card
+                        _buildLocationCard(),
+
+                        const SizedBox(height: 24),
+
+                        // Status Cards
+                        _buildStatusCards(),
+
+                        const SizedBox(height: 24),
+
+                        // FITUR : Stats Card
+                        _buildStatsCard(),
+
+                        const SizedBox(height: 24),
+
+                        // Action Section
+                        if (_hasCheckedIn && _hasCheckedOut) ...[
+                          _buildCompletionCard(),
+                        ] else if (!_isInOfficeArea) ...[
+                          _buildOutOfOfficeAlert(),
+                        ] else if (!_hasCheckedIn) ...[
+                          _buildCleanSwipeButton(
+                            label: "check_in",
+                            icon: Icons.login_rounded,
+                            isEnabled: !_hasCheckedIn,
+                            action: "checkin",
+                            color: _accentGreen,
+                          ),
+                        ] else if (!_hasCheckedOut) ...[
+                          _buildCleanSwipeButton(
+                            label: "check_out",
+                            icon: Icons.logout_rounded,
+                            isEnabled: !_hasCheckedOut,
+                            action: "checkout",
+                            color: _accentRed,
+                          ),
+                        ],
+
+                        const SizedBox(height: 24),
+
+                        // Work Summary Card
+                        _buildWorkSummaryCard(),
+
+                        const SizedBox(height: 32),
                       ],
-
-                      const SizedBox(height: 32),
-
-                      // Work Summary Card
-                      _buildWorkSummaryCard(),
-
-                      const SizedBox(height: 40),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1576,7 +1975,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         setState(() {
           _isLoadingLocation = false;
         });
-        widget.showSnackBar("Location service is disabled".tr());
+        widget.showSnackBar("location.service_disabled".tr());
         return;
       }
 
@@ -1589,7 +1988,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           setState(() {
             _isLoadingLocation = false;
           });
-          widget.showSnackBar("Location permission denied".tr());
+          widget.showSnackBar("location.permission_denied".tr());
           return;
         }
       }
@@ -1618,7 +2017,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               BitmapDescriptor.hueRed,
             ),
             infoWindow: InfoWindow(
-              title: 'Your Location'.tr(),
+              title: "home.your_location".tr(),
               snippet: "${place.street}, ${place.locality}",
             ),
           );
@@ -1637,12 +2036,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           );
         });
 
-        widget.showSnackBar("Location updated successfully".tr());
+        widget.showSnackBar("location.updated_successfully".tr());
       }
     } catch (e) {
       print("Error getting location: $e");
       if (mounted) {
-        widget.showSnackBar("Failed to get current location".tr());
+        widget.showSnackBar("location.failed_to_get_location".tr());
       }
     } finally {
       if (mounted) {
@@ -1724,4 +2123,56 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       }
     ]
   ''';
+}
+
+// Parallax Element Data Class
+class ParallaxElement {
+  final IconData icon;
+  final Color color;
+  final double size;
+  final Offset position;
+  final double speed;
+  final double opacity;
+
+  ParallaxElement({
+    required this.icon,
+    required this.color,
+    required this.size,
+    required this.position,
+    required this.speed,
+    required this.opacity,
+  });
+}
+
+// Painter untuk parallax background
+class _ParallaxBackgroundPainter extends CustomPainter {
+  final List<ParallaxElement> elements;
+  final double animationValue;
+  final bool isDarkMode;
+
+  _ParallaxBackgroundPainter({
+    required this.elements,
+    required this.animationValue,
+    required this.isDarkMode,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+
+    for (final element in elements) {
+      final offsetX =
+          size.width * element.position.dx +
+          animationValue * 100 * element.speed;
+      final offsetY = size.height * element.position.dy;
+
+      paint.color = element.color.withOpacity(element.opacity);
+
+      // Draw icon (simplified as circle for example)
+      canvas.drawCircle(Offset(offsetX, offsetY), element.size / 2, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

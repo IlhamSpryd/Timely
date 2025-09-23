@@ -1,6 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:logger/logger.dart';
 import 'package:provider/provider.dart';
 import 'package:timely/services/auth_services.dart';
 import 'package:timely/utils/theme_helper.dart';
@@ -20,6 +26,8 @@ class _SettingsPageState extends State<SettingsPage>
     with TickerProviderStateMixin {
   bool _notifications = true;
   bool _isDarkMode = false;
+  UserProfile? _userProfile;
+  bool _isLoading = true;
 
   late final AnimationController _fadeController;
   late final AnimationController _slideController;
@@ -29,11 +37,15 @@ class _SettingsPageState extends State<SettingsPage>
   late final Animation<Offset> _slideAnimation;
   late final Animation<double> _scaleAnimation;
 
+  final AuthService _authService = AuthService();
+  final Logger _logger = Logger();
+
   @override
   void initState() {
     super.initState();
     _initAnimations();
     _loadTheme();
+    _loadUserProfile();
   }
 
   void _initAnimations() {
@@ -81,17 +93,43 @@ class _SettingsPageState extends State<SettingsPage>
 
   Future<void> _loadTheme() async {
     final savedTheme = await ThemeHelper.loadTheme();
-    setState(() {
-      _isDarkMode = savedTheme == ThemeMode.dark;
-    });
+    if (mounted) {
+      setState(() {
+        _isDarkMode = savedTheme == ThemeMode.dark;
+      });
+    }
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      final token = await _authService.getToken();
+      if (token != null && mounted) {
+        final profile = await ProfileApi().getProfile(token);
+        if (mounted) {
+          setState(() {
+            _userProfile = UserProfile.fromGetProfileModel(profile);
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      _logger.e('Error loading profile: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _toggleTheme(bool isDark) async {
     final newThemeMode = isDark ? ThemeMode.dark : ThemeMode.light;
     await ThemeHelper.saveTheme(newThemeMode);
-    setState(() {
-      _isDarkMode = isDark;
-    });
+    if (mounted) {
+      setState(() {
+        _isDarkMode = isDark;
+      });
+    }
 
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     themeProvider.setTheme(newThemeMode);
@@ -206,6 +244,226 @@ class _SettingsPageState extends State<SettingsPage>
     HapticFeedback.selectionClick();
   }
 
+  Future<void> _changeProfilePhoto() async {
+    final picker = ImagePicker();
+    final token = await _authService.getToken();
+
+    if (token == null) return;
+
+    try {
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+
+      if (image != null && mounted) {
+        final file = File(image.path);
+        await ProfileApi().updateProfilePhoto(token, file);
+
+        // Hanya reload jika widget masih aktif
+        if (mounted) {
+          _loadUserProfile();
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('profile_photo_updated'.tr())));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('failed_update_photo'.tr())));
+      }
+    }
+  }
+
+  void _showEditProfileDialog() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final nameController = TextEditingController(text: _userProfile?.name);
+    final emailController = TextEditingController(text: _userProfile?.email);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text('edit_profile'.tr()),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: 'name'.tr(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emailController,
+                decoration: InputDecoration(
+                  labelText: 'email'.tr(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('cancel'.tr()),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  final token = await _authService.getToken();
+                  if (token != null) {
+                    await ProfileApi().updateProfile(
+                      token,
+                      nameController.text,
+                      emailController.text,
+                    );
+
+                    // Reload profile data hanya jika widget masih aktif
+                    if (mounted) {
+                      _loadUserProfile();
+                    }
+
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('profile_updated'.tr())),
+                      );
+                    }
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('failed_update_profile'.tr())),
+                    );
+                  }
+                }
+              },
+              child: Text('save'.tr()),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text('change_password'.tr()),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: currentPasswordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'current_password'.tr(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: newPasswordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'new_password'.tr(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: confirmPasswordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'confirm_password'.tr(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('cancel'.tr()),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (newPasswordController.text !=
+                    confirmPasswordController.text) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('passwords_not_match'.tr())),
+                    );
+                  }
+                  return;
+                }
+
+                try {
+                  final token = await _authService.getToken();
+                  if (token != null) {
+                    // Implement password change API call here
+                    // await ProfileApi().changePassword(
+                    //   token,
+                    //   currentPasswordController.text,
+                    //   newPasswordController.text,
+                    // );
+
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('password_updated'.tr())),
+                      );
+                    }
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('failed_update_password'.tr())),
+                    );
+                  }
+                }
+              },
+              child: Text('save'.tr()),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildProfileHeader() {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -232,19 +490,27 @@ class _SettingsPageState extends State<SettingsPage>
       child: Row(
         children: [
           // Avatar with border
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: CircleAvatar(
-              radius: 28,
-              backgroundColor: Colors.white,
-              child: Icon(
-                Icons.person_rounded,
-                color: const Color(0xFF3B82F6),
-                size: 32,
+          GestureDetector(
+            onTap: _changeProfilePhoto,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: CircleAvatar(
+                radius: 28,
+                backgroundColor: Colors.white,
+                backgroundImage: _userProfile?.profilePhotoUrl != null
+                    ? NetworkImage(_userProfile!.profilePhotoUrl!)
+                    : null,
+                child: _userProfile?.profilePhotoUrl == null
+                    ? Icon(
+                        Icons.person_rounded,
+                        color: const Color(0xFF3B82F6),
+                        size: 32,
+                      )
+                    : null,
               ),
             ),
           ),
@@ -257,7 +523,9 @@ class _SettingsPageState extends State<SettingsPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "profile_name".tr(),
+                  _isLoading
+                      ? "loading".tr()
+                      : _userProfile?.name ?? "profile_name".tr(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
@@ -266,12 +534,34 @@ class _SettingsPageState extends State<SettingsPage>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  "profile_subtitle".tr(),
+                  _isLoading
+                      ? ""
+                      : _userProfile?.email ?? "profile_subtitle".tr(),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.8),
                     fontSize: 14,
                   ),
                 ),
+                if (_userProfile?.batchKe != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    "Batch ${_userProfile?.batchKe}",
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+                if (_userProfile?.trainingTitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _userProfile!.trainingTitle!,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -283,9 +573,7 @@ class _SettingsPageState extends State<SettingsPage>
               borderRadius: BorderRadius.circular(12),
             ),
             child: IconButton(
-              onPressed: () => _animatePress(() {
-                // TODO: Edit Profile
-              }),
+              onPressed: () => _animatePress(_showEditProfileDialog),
               icon: const Icon(
                 Icons.edit_rounded,
                 color: Colors.white,
@@ -505,7 +793,7 @@ class _SettingsPageState extends State<SettingsPage>
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        ),
+      ),
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: SlideTransition(
@@ -520,6 +808,25 @@ class _SettingsPageState extends State<SettingsPage>
                 _buildProfileHeader(),
 
                 const SizedBox(height: 20),
+
+                // Account Section
+                _buildSection(
+                  title: "account".tr().toUpperCase(),
+                  children: [
+                    _buildSettingTile(
+                      title: "Edit profile".tr(),
+                      subtitle: "update profile info".tr(),
+                      icon: Icons.person_rounded,
+                      onTap: _showEditProfileDialog,
+                    ),
+                    _buildSettingTile(
+                      title: "change_password".tr(),
+                      subtitle: "update password info".tr(),
+                      icon: Icons.lock_rounded,
+                      onTap: _showChangePasswordDialog,
+                    ),
+                  ],
+                ),
 
                 // Appearance Section
                 _buildSection(
@@ -542,7 +849,11 @@ class _SettingsPageState extends State<SettingsPage>
                       title: "notifications".tr(),
                       icon: Icons.notifications_rounded,
                       value: _notifications,
-                      onChanged: (v) => setState(() => _notifications = v),
+                      onChanged: (v) {
+                        if (mounted) {
+                          setState(() => _notifications = v);
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -592,7 +903,7 @@ class _SettingsPageState extends State<SettingsPage>
                           applicationName: "Timely",
                           applicationVersion: "1.0.0",
                           applicationLegalese:
-                              "© 2025 King's Std.\nAll rights reserved.",
+                              "© 2025 Tungkings Inc.\nAll rights reserved.",
                           applicationIcon: Container(
                             width: 50,
                             height: 50,
@@ -619,7 +930,7 @@ class _SettingsPageState extends State<SettingsPage>
 
                 // Account Section - Destructive Actions
                 _buildSection(
-                  title: "account".tr().toUpperCase(),
+                  title: "actions".tr().toUpperCase(),
                   children: [
                     _buildSettingTile(
                       title: 'logout'.tr(),
@@ -636,7 +947,7 @@ class _SettingsPageState extends State<SettingsPage>
                   ],
                 ),
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 20),
 
                 // Footer
                 Padding(
@@ -665,7 +976,7 @@ class _SettingsPageState extends State<SettingsPage>
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          "Made with ❤️ by King's Std",
+                          "Made with Tungkings Inc",
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
@@ -808,6 +1119,139 @@ class _SettingsPageState extends State<SettingsPage>
           ),
         ),
       ),
+    );
+  }
+}
+
+// Model untuk data profil user
+class UserProfile {
+  final int? id;
+  final String? name;
+  final String? email;
+  final String? batchKe;
+  final String? trainingTitle;
+  final String? jenisKelamin;
+  final String? profilePhotoUrl;
+
+  UserProfile({
+    this.id,
+    this.name,
+    this.email,
+    this.batchKe,
+    this.trainingTitle,
+    this.jenisKelamin,
+    this.profilePhotoUrl,
+  });
+
+  factory UserProfile.fromGetProfileModel(GetProfileModel model) {
+    return UserProfile(
+      id: model.data?.id,
+      name: model.data?.name,
+      email: model.data?.email,
+      batchKe: model.data?.batchKe,
+      trainingTitle: model.data?.trainingTitle,
+      jenisKelamin: model.data?.jenisKelamin,
+      profilePhotoUrl: model.data?.profilePhotoUrl,
+    );
+  }
+}
+
+// API Service untuk mengelola profil
+class ProfileApi {
+  final String baseUrl = "https://appabsensi.mobileprojp.com/api";
+
+  Future<GetProfileModel> getProfile(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/profile'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return GetProfileModel.fromJson(json.decode(response.body));
+    } else {
+      throw Exception('Failed to load profile: ${response.body}');
+    }
+  }
+
+  Future<void> updateProfile(String token, String name, String email) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/profile'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'name': name, 'email': email}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update profile: ${response.body}');
+    }
+  }
+
+  Future<void> updateProfilePhoto(String token, File imageFile) async {
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/profile/photo'),
+    );
+
+    request.headers['Authorization'] = 'Bearer $token';
+    request.files.add(
+      await http.MultipartFile.fromPath('profile_photo', imageFile.path),
+    );
+
+    var response = await request.send();
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update profile photo');
+    }
+  }
+}
+
+// Model untuk response get profile
+class GetProfileModel {
+  final String? message;
+  final ProfileData? data;
+
+  GetProfileModel({this.message, this.data});
+
+  factory GetProfileModel.fromJson(Map<String, dynamic> json) {
+    return GetProfileModel(
+      message: json['message'],
+      data: json['data'] != null ? ProfileData.fromJson(json['data']) : null,
+    );
+  }
+}
+
+class ProfileData {
+  final int? id;
+  final String? name;
+  final String? email;
+  final String? batchKe;
+  final String? trainingTitle;
+  final String? jenisKelamin;
+  final String? profilePhotoUrl;
+
+  ProfileData({
+    this.id,
+    this.name,
+    this.email,
+    this.batchKe,
+    this.trainingTitle,
+    this.jenisKelamin,
+    this.profilePhotoUrl,
+  });
+
+  factory ProfileData.fromJson(Map<String, dynamic> json) {
+    return ProfileData(
+      id: json['id'],
+      name: json['name'],
+      email: json['email'],
+      batchKe: json['batch_ke'],
+      trainingTitle: json['training_title'],
+      jenisKelamin: json['jenis_kelamin'],
+      profilePhotoUrl: json['profile_photo_url'],
     );
   }
 }
