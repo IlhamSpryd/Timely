@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:logger/logger.dart';
 import 'package:provider/provider.dart';
+import 'package:timely/api/profile_api.dart';
 import 'package:timely/services/auth_services.dart';
 import 'package:timely/utils/theme_helper.dart';
 import 'package:timely/views/auth/login_page.dart';
@@ -38,6 +39,7 @@ class _SettingsPageState extends State<SettingsPage>
   late final Animation<double> _scaleAnimation;
 
   final AuthService _authService = AuthService();
+  final ProfileService _profileService = ProfileService();
   final Logger _logger = Logger();
 
   @override
@@ -258,7 +260,9 @@ class _SettingsPageState extends State<SettingsPage>
 
       if (image != null && mounted) {
         final file = File(image.path);
-        await ProfileApi().updateProfilePhoto(token, file);
+
+        // Panggil service yang benar
+        await _profileService.updateProfilePhoto(file.path);
 
         // Hanya reload jika widget masih aktif
         if (mounted) {
@@ -272,6 +276,7 @@ class _SettingsPageState extends State<SettingsPage>
         }
       }
     } catch (e) {
+      _logger.e('Failed to update profile photo: $e'); // Tambahkan logging
       if (mounted) {
         ScaffoldMessenger.of(
           context,
