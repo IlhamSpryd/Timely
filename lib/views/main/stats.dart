@@ -24,10 +24,13 @@ class _StatisticsPageState extends State<StatisticsPage>
   String _errorMessage = '';
   bool _isExporting = false;
 
+  static const int _targetDays = 45;
+
   late AnimationController _masterController;
   late AnimationController _pieChartController;
   late AnimationController _cardsController;
   late AnimationController _statsController;
+  late AnimationController _gamificationController;
 
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideUpAnimation;
@@ -60,6 +63,11 @@ class _StatisticsPageState extends State<StatisticsPage>
 
     _statsController = AnimationController(
       duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _gamificationController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
 
@@ -101,6 +109,7 @@ class _StatisticsPageState extends State<StatisticsPage>
     _pieChartController.dispose();
     _cardsController.dispose();
     _statsController.dispose();
+    _gamificationController.dispose();
     super.dispose();
   }
 
@@ -115,6 +124,7 @@ class _StatisticsPageState extends State<StatisticsPage>
       _pieChartController.reset();
       _cardsController.reset();
       _statsController.reset();
+      _gamificationController.reset();
 
       final stats = await _absenService.getAbsenStats();
       final history = await _absenService.getHistoryAbsen();
@@ -138,6 +148,10 @@ class _StatisticsPageState extends State<StatisticsPage>
       Future.delayed(const Duration(milliseconds: 800), () {
         if (mounted) _statsController.forward();
       });
+
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) _gamificationController.forward();
+      });
     } catch (e) {
       setState(() {
         _errorMessage = 'Gagal memuat data: $e';
@@ -156,6 +170,7 @@ class _StatisticsPageState extends State<StatisticsPage>
 
     try {
       final pdf = pw.Document();
+      final gamificationData = _calculateGamificationData();
 
       pdf.addPage(
         pw.Page(
@@ -175,6 +190,19 @@ class _StatisticsPageState extends State<StatisticsPage>
                 ),
                 pw.SizedBox(height: 30),
 
+                // Gamifikasi Section
+                pw.Text(
+                  'GAMIFIKASI',
+                  style: pw.TextStyle(
+                    fontSize: 18,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 15),
+                _buildPdfGamificationSection(gamificationData),
+                pw.SizedBox(height: 25),
+
+                // Ringkasan Statistik Section
                 pw.Text(
                   'RINGKASAN STATISTIK',
                   style: pw.TextStyle(
@@ -183,7 +211,6 @@ class _StatisticsPageState extends State<StatisticsPage>
                   ),
                 ),
                 pw.SizedBox(height: 15),
-
                 pw.Container(
                   padding: const pw.EdgeInsets.all(15),
                   decoration: pw.BoxDecoration(
@@ -282,6 +309,48 @@ class _StatisticsPageState extends State<StatisticsPage>
     return totalAlpha > 0 ? totalAlpha : 0;
   }
 
+  _GamificationData _calculateGamificationData() {
+    final totalMasuk = _statsData?.data?.totalMasuk ?? 0;
+    final progressPercentage = totalMasuk >= _targetDays
+        ? 1.0
+        : totalMasuk / _targetDays;
+    final xp = totalMasuk * 10;
+    final level = _calculateLevel(xp);
+    return _GamificationData(
+      progress: progressPercentage,
+      level: level,
+      xp: xp,
+      progressMessage: _getMotivationalMessage(progressPercentage),
+    );
+  }
+
+  int _calculateLevel(int xp) {
+    if (xp >= 5500) return 10;
+    if (xp >= 4000) return 9;
+    if (xp >= 2800) return 8;
+    if (xp >= 1800) return 7;
+    if (xp >= 1000) return 6;
+    if (xp >= 500) return 5;
+    if (xp >= 200) return 4;
+    if (xp >= 80) return 3;
+    if (xp >= 20) return 2;
+    return 1;
+  }
+
+  String _getMotivationalMessage(double progress) {
+    if (progress >= 1.0) {
+      return 'Target tercapai! Luar biasa! 🎉';
+    } else if (progress >= 0.8) {
+      return 'Hampir sampai! Tetap semangat! 💪';
+    } else if (progress >= 0.5) {
+      return 'Setengah perjalanan! Lanjutkan! Keep going! 🚀';
+    } else if (progress >= 0.2) {
+      return 'Awal yang baik! Terus konsisten! 👍';
+    } else {
+      return 'Mulai perjalanan kehadiranmu! 🌟';
+    }
+  }
+
   pw.Widget _buildPdfStatRow(String label, int value) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 6),
@@ -292,6 +361,68 @@ class _StatisticsPageState extends State<StatisticsPage>
           pw.Text(
             value.toString(),
             style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildPdfGamificationSection(_GamificationData data) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.purple600),
+        borderRadius: pw.BorderRadius.circular(8),
+        color: PdfColors.purple50,
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            children: [
+              pw.Text(
+                'Level Saat Ini: ',
+                style: const pw.TextStyle(fontSize: 12),
+              ),
+              pw.Text(
+                '${data.level}',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.purple700,
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 5),
+          pw.Text(
+            'XP: ${data.xp}',
+            style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey600),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Text(
+            'Progress Kehadiran: ${data.progress == 1.0 ? '100%' : '${(data.progress * 100).toStringAsFixed(1)}%'}',
+            style: const pw.TextStyle(fontSize: 12),
+          ),
+          pw.SizedBox(height: 5),
+          pw.Stack(
+            children: [
+              pw.Container(
+                height: 10,
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                  borderRadius: pw.BorderRadius.circular(5),
+                ),
+              ),
+              pw.Container(
+                height: 10,
+                width: 200 * data.progress, // Example width
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.purple400,
+                  borderRadius: pw.BorderRadius.circular(5),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -678,6 +809,172 @@ class _StatisticsPageState extends State<StatisticsPage>
                 'Data akan ditampilkan setelah ada aktivitas absensi',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGamificationSection() {
+    if (_statsData == null || _statsData!.data == null) {
+      return const SizedBox.shrink();
+    }
+
+    final data = _calculateGamificationData();
+    final totalMasuk = _statsData!.data!.totalMasuk ?? 0;
+
+    return SlideTransition(
+      position: Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero)
+          .animate(
+            CurvedAnimation(
+              parent: _gamificationController,
+              curve: Curves.easeOutCubic,
+            ),
+          ),
+      child: FadeTransition(
+        opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
+          CurvedAnimation(
+            parent: _gamificationController,
+            curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
+          ),
+        ),
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Level & Progress Kehadiran',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1F2937),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B5CF6),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      'Lv. ${data.level}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                data.progressMessage,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Text(
+                    '$totalMasuk',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF8B5CF6),
+                    ),
+                  ),
+                  const Text(
+                    ' / $_targetDays hari',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Stack(
+                children: [
+                  Container(
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE5E7EB),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 1000),
+                    tween: Tween<double>(begin: 0, end: data.progress),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, child) {
+                      return FractionallySizedBox(
+                        widthFactor: value,
+                        child: Container(
+                          height: 12,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'XP: ${data.xp}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  Text(
+                    '${(data.progress * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF8B5CF6),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1211,6 +1508,7 @@ class _StatisticsPageState extends State<StatisticsPage>
                 child: Column(
                   children: [
                     const SizedBox(height: 8),
+                    _buildGamificationSection(),
                     _buildModernPieChart(),
                     const SizedBox(height: 8),
                     _buildStatsOverview(),
@@ -1250,4 +1548,18 @@ class _ChartData {
   final IconData icon;
 
   _ChartData(this.label, this.value, this.color, this.icon);
+}
+
+class _GamificationData {
+  final double progress;
+  final int level;
+  final int xp;
+  final String progressMessage;
+
+  _GamificationData({
+    required this.progress,
+    required this.level,
+    required this.xp,
+    required this.progressMessage,
+  });
 }
