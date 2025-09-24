@@ -1,10 +1,9 @@
-import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:timely/services/auth_services.dart';
-import 'package:timely/models/traininglist_model.dart';
-import 'package:timely/models/listallbatches_model.dart';
-import 'package:timely/models/detailtraining_model.dart';
 import 'package:timely/api/endpoint.dart';
+import 'package:timely/models/detailtraining_model.dart';
+import 'package:timely/models/listallbatches_model.dart';
+import 'package:timely/models/traininglist_model.dart';
+import 'package:timely/services/auth_services.dart';
 
 class TrainingService {
   final AuthService _authService = AuthService();

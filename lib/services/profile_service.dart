@@ -1,9 +1,8 @@
 // profile_service.dart
-import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:timely/services/auth_services.dart';
-import 'package:timely/models/getprofile_model.dart';
 import 'package:timely/api/endpoint.dart';
+import 'package:timely/models/getprofile_model.dart';
+import 'package:timely/services/auth_services.dart';
 
 class ProfileService {
   final AuthService _authService = AuthService();

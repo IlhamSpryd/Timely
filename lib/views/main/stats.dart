@@ -1,8 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -27,13 +24,16 @@ class _StatisticsPageState extends State<StatisticsPage>
   String _errorMessage = '';
   bool _isExporting = false;
 
-  late AnimationController _fadeController;
-  late AnimationController _slideController;
-  late AnimationController _scaleController;
+  late AnimationController _masterController;
+  late AnimationController _pieChartController;
+  late AnimationController _cardsController;
+  late AnimationController _statsController;
 
   late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
+  late Animation<Offset> _slideUpAnimation;
+  late Animation<Offset> _slideLeftAnimation;
   late Animation<double> _scaleAnimation;
+  late Animation<double> _rotateAnimation;
 
   @override
   void initState() {
@@ -43,44 +43,78 @@ class _StatisticsPageState extends State<StatisticsPage>
   }
 
   void _initAnimations() {
-    _fadeController = AnimationController(
+    _masterController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+
+    _pieChartController = AnimationController(
+      duration: const Duration(milliseconds: 1800),
+      vsync: this,
+    );
+
+    _cardsController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+
+    _statsController = AnimationController(
       duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-    _slideController = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-    _scaleController = AnimationController(
-      duration: const Duration(milliseconds: 400),
       vsync: this,
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
+      CurvedAnimation(
+        parent: _masterController,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+      ),
     );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOut));
+    _slideUpAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.8), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _masterController,
+            curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
+          ),
+        );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _scaleController, curve: Curves.elasticOut),
+    _slideLeftAnimation =
+        Tween<Offset>(begin: const Offset(0.5, 0), end: Offset.zero).animate(
+          CurvedAnimation(parent: _cardsController, curve: Curves.easeOutCubic),
+        );
+
+    _scaleAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _pieChartController, curve: Curves.elasticOut),
+    );
+
+    _rotateAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _pieChartController,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
+      ),
     );
   }
 
   @override
   void dispose() {
-    _fadeController.dispose();
-    _slideController.dispose();
-    _scaleController.dispose();
+    _masterController.dispose();
+    _pieChartController.dispose();
+    _cardsController.dispose();
+    _statsController.dispose();
     super.dispose();
   }
 
   Future<void> _loadData() async {
     try {
-      setState(() => _isLoading = true);
+      setState(() {
+        _isLoading = true;
+        _errorMessage = '';
+      });
+
+      _masterController.reset();
+      _pieChartController.reset();
+      _cardsController.reset();
+      _statsController.reset();
 
       final stats = await _absenService.getAbsenStats();
       final history = await _absenService.getHistoryAbsen();
@@ -89,23 +123,26 @@ class _StatisticsPageState extends State<StatisticsPage>
         _statsData = stats;
         _historyData = history;
         _isLoading = false;
-        _errorMessage = '';
       });
 
-      // Start animations
-      _fadeController.forward();
-      Future.delayed(const Duration(milliseconds: 200), () {
-        _slideController.forward();
-      });
+      _masterController.forward();
+
       Future.delayed(const Duration(milliseconds: 400), () {
-        _scaleController.forward();
+        if (mounted) _pieChartController.forward();
+      });
+
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _cardsController.forward();
+      });
+
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) _statsController.forward();
       });
     } catch (e) {
       setState(() {
         _errorMessage = 'Gagal memuat data: $e';
         _isLoading = false;
       });
-      print('Error loading data: $e');
     }
   }
 
@@ -127,33 +164,31 @@ class _StatisticsPageState extends State<StatisticsPage>
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Header
                 pw.Center(
                   child: pw.Text(
                     'LAPORAN STATISTIK ABSENSI',
                     style: pw.TextStyle(
-                      fontSize: 20,
+                      fontSize: 24,
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
                 ),
-                pw.SizedBox(height: 20),
+                pw.SizedBox(height: 30),
 
-                // Statistics Summary
                 pw.Text(
                   'RINGKASAN STATISTIK',
                   style: pw.TextStyle(
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: pw.FontWeight.bold,
                   ),
                 ),
-                pw.SizedBox(height: 10),
+                pw.SizedBox(height: 15),
 
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(10),
+                  padding: const pw.EdgeInsets.all(15),
                   decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey),
-                    borderRadius: pw.BorderRadius.circular(5),
+                    border: pw.Border.all(color: PdfColors.grey300),
+                    borderRadius: pw.BorderRadius.circular(8),
                   ),
                   child: pw.Column(
                     children: [
@@ -173,27 +208,26 @@ class _StatisticsPageState extends State<StatisticsPage>
                     ],
                   ),
                 ),
-                pw.SizedBox(height: 20),
+                pw.SizedBox(height: 25),
 
-                // Attendance History
                 if (_historyData != null &&
                     _historyData!.data != null &&
                     _historyData!.data!.isNotEmpty) ...[
                   pw.Text(
                     'RIWAYAT ABSENSI',
                     style: pw.TextStyle(
-                      fontSize: 16,
+                      fontSize: 18,
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
-                  pw.SizedBox(height: 10),
+                  pw.SizedBox(height: 15),
                   _buildHistoryTable(),
-                  pw.SizedBox(height: 20),
+                  pw.SizedBox(height: 25),
                 ],
 
                 pw.Text(
                   'Dibuat pada: ${DateFormat('dd MMMM yyyy HH:mm').format(DateTime.now())}',
-                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey),
+                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
                 ),
               ],
             );
@@ -201,20 +235,12 @@ class _StatisticsPageState extends State<StatisticsPage>
         ),
       );
 
-      // Save PDF to file
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File(
-        '${directory.path}/laporan_absensi_${DateTime.now().millisecondsSinceEpoch}.pdf',
-      );
-      await file.writeAsBytes(await pdf.save());
-
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => pdf.save(),
       );
 
       _showSnackBar('PDF berhasil diekspor dan dibuka');
     } catch (e) {
-      print('Error exporting PDF: $e');
       _showSnackBar('Gagal mengekspor PDF: $e', isError: true);
     } finally {
       setState(() => _isExporting = false);
@@ -222,15 +248,28 @@ class _StatisticsPageState extends State<StatisticsPage>
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
         backgroundColor: isError
-            ? Theme.of(context).colorScheme.error
-            : Theme.of(context).colorScheme.primary,
+            ? const Color(0xFFE53E3E)
+            : const Color(0xFF38A169),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -245,14 +284,14 @@ class _StatisticsPageState extends State<StatisticsPage>
 
   pw.Widget _buildPdfStatRow(String label, int value) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      padding: const pw.EdgeInsets.symmetric(vertical: 6),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label),
+          pw.Text(label, style: pw.TextStyle(fontSize: 12)),
           pw.Text(
             value.toString(),
-            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
           ),
         ],
       ),
@@ -263,7 +302,7 @@ class _StatisticsPageState extends State<StatisticsPage>
     final historyRecords = _historyData!.data!;
 
     return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.grey),
+      border: pw.TableBorder.all(color: PdfColors.grey300),
       columnWidths: {
         0: const pw.FlexColumnWidth(1.5),
         1: const pw.FlexColumnWidth(1),
@@ -272,7 +311,7 @@ class _StatisticsPageState extends State<StatisticsPage>
       },
       children: [
         pw.TableRow(
-          decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+          decoration: const pw.BoxDecoration(color: PdfColors.grey100),
           children: [
             pw.Padding(
               padding: const pw.EdgeInsets.all(8),
@@ -304,7 +343,7 @@ class _StatisticsPageState extends State<StatisticsPage>
             ),
           ],
         ),
-        ...historyRecords.map((record) {
+        ...historyRecords.take(20).map((record) {
           return pw.TableRow(
             children: [
               pw.Padding(
@@ -313,15 +352,22 @@ class _StatisticsPageState extends State<StatisticsPage>
                   record.attendanceDate != null
                       ? DateFormat('dd/MM/yyyy').format(record.attendanceDate!)
                       : '-',
+                  style: pw.TextStyle(fontSize: 10),
                 ),
               ),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(8),
-                child: pw.Text(record.checkInTime ?? '-'),
+                child: pw.Text(
+                  record.checkInTime ?? '-',
+                  style: pw.TextStyle(fontSize: 10),
+                ),
               ),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(8),
-                child: pw.Text(record.checkOutTime ?? '-'),
+                child: pw.Text(
+                  record.checkOutTime ?? '-',
+                  style: pw.TextStyle(fontSize: 10),
+                ),
               ),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(8),
@@ -329,6 +375,7 @@ class _StatisticsPageState extends State<StatisticsPage>
                   record.status ?? '-',
                   style: pw.TextStyle(
                     color: _getStatusColorPdf(record.status ?? ''),
+                    fontSize: 10,
                   ),
                 ),
               ),
@@ -342,40 +389,299 @@ class _StatisticsPageState extends State<StatisticsPage>
   PdfColor _getStatusColorPdf(String status) {
     switch (status.toLowerCase()) {
       case 'hadir':
-        return PdfColors.green;
+        return PdfColors.green700;
       case 'terlambat':
-        return PdfColors.orange;
+        return PdfColors.orange700;
       case 'izin':
-        return PdfColors.blue;
+        return PdfColors.blue700;
       case 'alpha':
-        return PdfColors.red;
+        return PdfColors.red700;
       default:
         return PdfColors.black;
     }
   }
 
-  Widget _buildAnimatedCard({
-    required Widget child,
-    required int index,
-    EdgeInsetsGeometry? margin,
-  }) {
-    return Container(
-      margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: TweenAnimationBuilder<double>(
-        duration: Duration(milliseconds: 800 + (index * 150)),
-        tween: Tween(begin: 0.0, end: 1.0),
-        curve: Curves.easeOutCubic,
-        builder: (context, value, child) {
-          // Ensure opacity is always within valid range
-          final clampedOpacity = value.clamp(0.0, 1.0);
-          final clampedScale = (0.8 + (0.2 * value)).clamp(0.0, 1.0);
+  Widget _buildModernPieChart() {
+    if (_statsData == null || _statsData!.data == null)
+      return const SizedBox.shrink();
 
-          return Transform.scale(
-            scale: clampedScale,
-            child: Opacity(opacity: clampedOpacity, child: child),
-          );
-        },
-        child: child,
+    final totalMasuk = _statsData!.data!.totalMasuk ?? 0;
+    final totalIzin = _statsData!.data!.totalIzin ?? 0;
+    final totalAlpha = _calculateTotalAlpha();
+    final total = totalMasuk + totalIzin + totalAlpha;
+
+    if (total == 0) return _buildEmptyPieChart();
+
+    final data = [
+      _ChartData(
+        'Hadir',
+        totalMasuk,
+        const Color(0xFF10B981),
+        Icons.check_circle,
+      ),
+      _ChartData(
+        'Izin',
+        totalIzin,
+        const Color(0xFF3B82F6),
+        Icons.event_available,
+      ),
+      _ChartData('Alpha', totalAlpha, const Color(0xFFEF4444), Icons.cancel),
+    ].where((item) => item.value > 0).toList();
+
+    return SlideTransition(
+      position: _slideUpAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Container(
+          margin: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.pie_chart_rounded,
+                        color: Color(0xFF8B5CF6),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Distribusi Kehadiran',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1F2937),
+                            ),
+                          ),
+                          Text(
+                            'Total $total hari',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: ScaleTransition(
+                        scale: _scaleAnimation,
+                        child: RotationTransition(
+                          turns: _rotateAnimation,
+                          child: SizedBox(
+                            height: 220,
+                            child: SfCircularChart(
+                              margin: EdgeInsets.zero,
+                              series: <CircularSeries<_ChartData, String>>[
+                                DoughnutSeries<_ChartData, String>(
+                                  dataSource: data,
+                                  xValueMapper: (_ChartData data, _) =>
+                                      data.label,
+                                  yValueMapper: (_ChartData data, _) =>
+                                      data.value,
+                                  pointColorMapper: (_ChartData data, _) =>
+                                      data.color,
+                                  innerRadius: '65%',
+                                  radius: '90%',
+                                  cornerStyle: CornerStyle.bothCurve,
+                                  strokeWidth: 0,
+                                  animationDuration: 1200,
+                                  dataLabelSettings: const DataLabelSettings(
+                                    isVisible: false,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        children: data.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final item = entry.value;
+                          final percentage = (item.value / total * 100);
+
+                          return TweenAnimationBuilder<double>(
+                            duration: Duration(
+                              milliseconds: 800 + (index * 200),
+                            ),
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, value, child) {
+                              return Transform.translate(
+                                offset: Offset(30 * (1 - value), 0),
+                                child: Opacity(opacity: value, child: child),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: item.color.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: item.color.withOpacity(0.2),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: item.color,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      item.icon,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.label,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                            color: Color(0xFF374151),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              '${item.value}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                                color: item.color,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Flexible(
+                                              child: Text(
+                                                '(${percentage.toStringAsFixed(1)}%)',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyPieChart() {
+    return SlideTransition(
+      position: _slideUpAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Container(
+          margin: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(40),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Icon(
+                Icons.pie_chart_outline_rounded,
+                size: 80,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Belum Ada Data Absensi',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Data akan ditampilkan setelah ada aktivitas absensi',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -386,92 +692,82 @@ class _StatisticsPageState extends State<StatisticsPage>
 
     final totalAbsen = _statsData!.data!.totalAbsen ?? 0;
     final totalMasuk = _statsData!.data!.totalMasuk ?? 0;
-    final totalIzin = _statsData!.data!.totalIzin ?? 0;
-    final totalAlpha = _calculateTotalAlpha();
+    final attendanceRate = totalAbsen > 0
+        ? (totalMasuk / totalAbsen * 100)
+        : 0.0;
 
-    return _buildAnimatedCard(
-      index: 0,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Theme.of(context).colorScheme.primary,
-              Theme.of(context).colorScheme.primary.withOpacity(0.8),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
+    return SlideTransition(
+      position: _slideLeftAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Text(
-              'Ringkasan Statistik',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF667EEA).withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
               ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildOverviewItem(
-                    'Total Hari',
-                    totalAbsen.toString(),
-                    Icons.calendar_today_outlined,
-                  ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Ringkasan Kehadiran',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${attendanceRate.toStringAsFixed(1)}%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'Tingkat Kehadiran',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
                 ),
-                Container(
-                  width: 1,
-                  height: 60,
-                  color: Colors.white.withOpacity(0.3),
+              ),
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(40),
                 ),
-                Expanded(
-                  child: _buildOverviewItem(
-                    'Kehadiran',
-                    totalAbsen > 0
-                        ? '${((totalMasuk / totalAbsen) * 100).toStringAsFixed(1)}%'
-                        : '0%',
-                    Icons.trending_up,
-                  ),
+                child: const Icon(
+                  Icons.trending_up,
+                  size: 40,
+                  color: Colors.white,
                 ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
-    );
-  }
-
-  Widget _buildOverviewItem(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, size: 32, color: Colors.white.withOpacity(0.9)),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.8)),
-        ),
-      ],
     );
   }
 
@@ -486,36 +782,63 @@ class _StatisticsPageState extends State<StatisticsPage>
 
     final stats = [
       _StatItem(
+        title: 'Total Hari',
+        value: totalAbsen,
+        icon: Icons.calendar_today_rounded,
+        color: const Color(0xFF6366F1),
+        subtitle: 'Hari Kerja',
+      ),
+      _StatItem(
         title: 'Hadir',
         value: totalMasuk,
-        icon: Icons.check_circle_outline,
-        color: Theme.of(context).colorScheme.secondary,
-        percentage: totalAbsen > 0 ? (totalMasuk / totalAbsen) * 100 : 0,
+        icon: Icons.check_circle_rounded,
+        color: const Color(0xFF10B981),
+        subtitle: 'Hari Hadir',
       ),
       _StatItem(
         title: 'Izin',
         value: totalIzin,
-        icon: Icons.event_available_outlined,
-        color: Theme.of(context).colorScheme.tertiary,
-        percentage: totalAbsen > 0 ? (totalIzin / totalAbsen) * 100 : 0,
+        icon: Icons.event_available_rounded,
+        color: const Color(0xFF3B82F6),
+        subtitle: 'Hari Izin',
       ),
       _StatItem(
         title: 'Alpha',
         value: totalAlpha,
-        icon: Icons.cancel_outlined,
-        color: Theme.of(context).colorScheme.error,
-        percentage: totalAbsen > 0 ? (totalAlpha / totalAbsen) * 100 : 0,
+        icon: Icons.cancel_rounded,
+        color: const Color(0xFFEF4444),
+        subtitle: 'Hari Alpha',
       ),
     ];
 
-    return Column(
-      children: stats.map((stat) {
-        final index = stats.indexOf(stat);
-        return _buildAnimatedCard(
-          index: index + 1,
-          child: _buildStatCard(stat),
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 1.1,
+      ),
+      itemCount: stats.length,
+      itemBuilder: (context, index) {
+        return TweenAnimationBuilder<double>(
+          duration: Duration(milliseconds: 600 + (index * 150)),
+          tween: Tween(begin: 0.0, end: 1.0),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, child) {
+            return Transform.scale(
+              scale: 0.8 + (0.2 * value),
+              child: Transform.translate(
+                offset: Offset(0, 30 * (1 - value)),
+                child: Opacity(opacity: value, child: child),
+              ),
+            );
+          },
+          child: _buildStatCard(stats[index]),
         );
-      }).toList(),
+      },
     );
   }
 
@@ -523,207 +846,98 @@ class _StatisticsPageState extends State<StatisticsPage>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
+        border: Border.all(color: Colors.grey.withOpacity(0.1), width: 1),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: stat.color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(stat.icon, size: 32, color: stat.color),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  stat.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: stat.color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(
-                      stat.value.toString(),
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(
-                            color: stat.color,
-                            fontWeight: FontWeight.bold,
-                          ),
+                child: Icon(stat.icon, color: stat.color, size: 24),
+              ),
+              const Spacer(),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '(${stat.percentage.toStringAsFixed(1)}%)',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withOpacity(0.6),
+                    decoration: BoxDecoration(
+                      color: stat.color.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '+${stat.value}',
+                      style: TextStyle(
+                        color: stat.color,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 60,
-            height: 60,
-            child: CircularProgressIndicator(
-              value: stat.percentage / 100,
-              backgroundColor: stat.color.withOpacity(0.2),
-              valueColor: AlwaysStoppedAnimation<Color>(stat.color),
-              strokeWidth: 4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPieChart() {
-    if (_statsData == null || _statsData!.data == null)
-      return const SizedBox.shrink();
-
-    final totalMasuk = _statsData!.data!.totalMasuk ?? 0;
-    final totalIzin = _statsData!.data!.totalIzin ?? 0;
-    final totalAlpha = _calculateTotalAlpha();
-    final total = totalMasuk + totalIzin + totalAlpha;
-
-    if (total == 0) {
-      return _buildAnimatedCard(index: 4, child: _buildEmptyChart());
-    }
-
-    final data = [
-      _ChartData('Hadir', totalMasuk, Theme.of(context).colorScheme.secondary),
-      _ChartData('Izin', totalIzin, Theme.of(context).colorScheme.tertiary),
-      _ChartData('Alpha', totalAlpha, Theme.of(context).colorScheme.error),
-    ].where((item) => item.value > 0).toList();
-
-    return _buildAnimatedCard(
-      index: 4,
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Text(
-              'Distribusi Absensi',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 300,
-              child: ScaleTransition(
-                scale: _scaleAnimation,
-                child: SfCircularChart(
-                  series: <CircularSeries<_ChartData, String>>[
-                    DoughnutSeries<_ChartData, String>(
-                      dataSource: data,
-                      xValueMapper: (_ChartData data, _) => data.label,
-                      yValueMapper: (_ChartData data, _) => data.value,
-                      pointColorMapper: (_ChartData data, _) => data.color,
-                      dataLabelSettings: const DataLabelSettings(
-                        isVisible: true,
-                        labelPosition: ChartDataLabelPosition.outside,
-                        useSeriesColor: true,
-                      ),
-                      enableTooltip: true,
-                      innerRadius: '60%',
-                      cornerStyle: CornerStyle.bothCurve,
-                      animationDuration: 1500,
-                    ),
-                  ],
-                  legend: Legend(
-                    isVisible: true,
-                    position: LegendPosition.bottom,
-                    overflowMode: LegendItemOverflowMode.wrap,
-                    textStyle: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyChart() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-        ),
-      ),
-      child: Column(
-        children: [
-          Text(
-            'Distribusi Absensi',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ],
           ),
-          const SizedBox(height: 40),
-          Icon(
-            Icons.pie_chart_outline,
-            size: 80,
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
+          const Spacer(),
           Text(
-            'Belum ada data absensi',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            stat.value.toString(),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: stat.color,
             ),
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 4),
+          Text(
+            stat.title,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
+            ),
+          ),
+          Text(
+            stat.subtitle,
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildExportButton() {
-    return _buildAnimatedCard(
-      index: 5,
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 1000),
+      tween: Tween(begin: 0.0, end: 1.0),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Transform.translate(
+          offset: Offset(0, 50 * (1 - value)),
+          child: Opacity(opacity: value, child: child),
+        );
+      },
       child: Container(
+        margin: const EdgeInsets.all(20),
         width: double.infinity,
-        margin: const EdgeInsets.symmetric(horizontal: 0),
-        child: FilledButton.icon(
+        child: ElevatedButton.icon(
           onPressed: _isExporting ? null : _exportToPdf,
           icon: _isExporting
               ? SizedBox(
@@ -731,18 +945,23 @@ class _StatisticsPageState extends State<StatisticsPage>
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Theme.of(context).colorScheme.onPrimary,
-                    ),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 )
-              : const Icon(Icons.file_download_outlined),
-          label: Text(_isExporting ? 'Mengekspor...' : 'Export Laporan PDF'),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              : const Icon(Icons.download_rounded, size: 20),
+          label: Text(
+            _isExporting ? 'Mengekspor PDF...' : 'Export Laporan PDF',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF8B5CF6),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
             ),
+            elevation: 8,
+            shadowColor: const Color(0xFF8B5CF6).withOpacity(0.3),
           ),
         ),
       ),
@@ -751,48 +970,83 @@ class _StatisticsPageState extends State<StatisticsPage>
 
   Widget _buildErrorView() {
     return Center(
-      child: Container(
-        margin: const EdgeInsets.all(24),
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.errorContainer,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Oops! Terjadi Kesalahan',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Theme.of(context).colorScheme.error,
-                fontWeight: FontWeight.bold,
+      child: TweenAnimationBuilder<double>(
+        duration: const Duration(milliseconds: 800),
+        tween: Tween(begin: 0.0, end: 1.0),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) {
+          return Transform.scale(
+            scale: 0.8 + (0.2 * value),
+            child: Opacity(opacity: value, child: child),
+          );
+        },
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _errorMessage,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onErrorContainer,
+            ],
+            border: Border.all(color: Colors.red.withOpacity(0.2), width: 1),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(
+                  Icons.error_outline_rounded,
+                  size: 48,
+                  color: Color(0xFFEF4444),
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: _loadData,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Coba Lagi'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-                foregroundColor: Theme.of(context).colorScheme.onError,
+              const SizedBox(height: 24),
+              const Text(
+                'Oops! Terjadi Kesalahan',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1F2937),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                _errorMessage,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _loadData,
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+                label: const Text(
+                  'Coba Lagi',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFEF4444),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -803,24 +1057,60 @@ class _StatisticsPageState extends State<StatisticsPage>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).colorScheme.primary,
-              ),
-            ),
+          TweenAnimationBuilder<double>(
+            duration: const Duration(seconds: 2),
+            tween: Tween(begin: 0.0, end: 1.0),
+            builder: (context, value, child) {
+              return Transform.rotate(
+                angle: value * 2 * 3.14159,
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(40),
+                  ),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      const Color(0xFF8B5CF6),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
-          const SizedBox(height: 24),
-          Text(
-            'Memuat data statistik...',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+          const SizedBox(height: 32),
+          TweenAnimationBuilder<double>(
+            duration: const Duration(milliseconds: 1500),
+            tween: Tween(begin: 0.0, end: 1.0),
+            curve: Curves.easeOut,
+            builder: (context, value, child) {
+              return Opacity(
+                opacity: value,
+                child: Transform.translate(
+                  offset: Offset(0, 20 * (1 - value)),
+                  child: child,
+                ),
+              );
+            },
+            child: Column(
+              children: [
+                const Text(
+                  'Memuat Data Statistik',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF374151),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Mohon tunggu sebentar...',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+              ],
             ),
           ),
         ],
@@ -828,67 +1118,108 @@ class _StatisticsPageState extends State<StatisticsPage>
     );
   }
 
+  Widget _buildEmptyStateView() {
+    return Center(
+      child: TweenAnimationBuilder<double>(
+        duration: const Duration(milliseconds: 800),
+        tween: Tween(begin: 0.0, end: 1.0),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) {
+          return Transform.scale(
+            scale: 0.8 + (0.2 * value),
+            child: Opacity(opacity: value, child: child),
+          );
+        },
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(40),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(
+                  Icons.analytics_rounded,
+                  size: 64,
+                  color: Color(0xFF8B5CF6),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Belum Ada Data Statistik',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Data statistik akan muncul setelah ada aktivitas absensi',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Statistik Absensi'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _isLoading ? null : _loadData,
-            tooltip: 'Refresh Data',
+        title: const Text(
+          'Statistik Absensi',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1F2937),
           ),
-        ],
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
       ),
       body: _isLoading
           ? _buildLoadingView()
           : _errorMessage.isNotEmpty
           ? _buildErrorView()
           : _statsData == null || _statsData!.data == null
-          ? Center(
-              child: Container(
-                margin: const EdgeInsets.all(24),
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.analytics_outlined,
-                      size: 64,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Tidak ada data statistik',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                  ],
-                ),
-              ),
-            )
+          ? _buildEmptyStateView()
           : RefreshIndicator(
               onRefresh: _loadData,
+              color: const Color(0xFF8B5CF6),
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 8),
-                      _buildStatsOverview(),
-                      const SizedBox(height: 8),
-                      _buildStatsGrid(),
-                      const SizedBox(height: 8),
-                      _buildPieChart(),
-                      const SizedBox(height: 16),
-                      _buildExportButton(),
-                    ],
-                  ),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    _buildModernPieChart(),
+                    const SizedBox(height: 8),
+                    _buildStatsOverview(),
+                    const SizedBox(height: 16),
+                    _buildStatsGrid(),
+                    const SizedBox(height: 16),
+                    _buildExportButton(),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
             ),
@@ -901,14 +1232,14 @@ class _StatItem {
   final int value;
   final IconData icon;
   final Color color;
-  final double percentage;
+  final String subtitle;
 
   _StatItem({
     required this.title,
     required this.value,
     required this.icon,
     required this.color,
-    required this.percentage,
+    required this.subtitle,
   });
 }
 
@@ -916,6 +1247,7 @@ class _ChartData {
   final String label;
   final int value;
   final Color color;
+  final IconData icon;
 
-  _ChartData(this.label, this.value, this.color);
+  _ChartData(this.label, this.value, this.color, this.icon);
 }

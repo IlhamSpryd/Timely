@@ -5,11 +5,10 @@ import 'package:google_fonts/google_fonts.dart';
 class AppTheme {
   // Modern Professional Color Palette
   static const _primaryBlue = Color(0xFF2563EB);
-  static const _primaryBlueDark = Color(0xFF1D4ED8); // Darker Blue
-  static const _accentGreen = Color(0xFF10B981); // Success Green
-  static const _accentOrange = Color(0xFFF59E0B); // Warning Orange
-  static const _accentRed = Color(0xFFEF4444); // Error Red
-  static const _accentPurple = Color(0xFF8B5CF6); // Info Purple
+  static const _accentGreen = Color(0xFF10B981);
+  static const _accentOrange = Color(0xFFF59E0B);
+  static const _accentRed = Color(0xFFEF4444);
+
 
   // Neutral Colors Light
   static const _lightSurface = Color(0xFFFDFDFD);
